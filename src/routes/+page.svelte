@@ -3,20 +3,26 @@
     AlertCircle,
     Apple,
     CheckCircle2,
-    ChevronDown,
     CloudOff,
     Inbox,
     KeyRound,
     Loader2,
+    LogOut,
     Mail,
+    Monitor,
     Moon,
     Paperclip,
+    Palette,
     Plus,
     RefreshCw,
     Search,
+    Settings,
+    ShieldAlert,
     ShieldCheck,
     Sun,
     Trash2,
+    UserPlus,
+    X,
   } from "@lucide/svelte";
   import { api } from "$lib/tauri";
   import type {
@@ -41,9 +47,9 @@
   ];
 
   const accountColors = [
+    "#0d9488",
     "#2563eb",
-    "#059669",
-    "#d97706",
+    "#f97316",
     "#7c3aed",
     "#dc2626",
     "#0891b2",
@@ -53,6 +59,20 @@
     { id: "root:trash", name: "Trash", names: ["trash"] },
     { id: "root:spam", name: "Spam", names: ["spam", "junk"] },
   ];
+  const panelHandleWidth = 6;
+  const minAccountPanelWidth = 220;
+  const maxAccountPanelWidth = 420;
+  const minMessageListWidth = 300;
+  const maxMessageListWidth = 640;
+  const minMessagePanelWidth = 360;
+
+  type ResizeTarget = "accounts" | "message";
+  type ResizeState = {
+    target: ResizeTarget;
+    startX: number;
+    startAccountWidth: number;
+    startMessageListWidth: number;
+  };
 
   let email = $state("");
   let magicLinkSent = $state(false);
@@ -72,10 +92,17 @@
   let appBusy = $state(false);
   let appError = $state("");
   let accountPanelOpen = $state(false);
+  let settingsOpen = $state(false);
+  let settingsTab = $state<"general" | "accounts" | "advanced">("general");
   let icloudEmail = $state("");
   let icloudPassword = $state("");
   let theme = $state<ThemeMode>("system");
   let selectionMode = $state(false);
+  let accountColorOverrides = $state<Record<string, string>>({});
+  let mailShell = $state<HTMLElement | null>(null);
+  let accountPanelWidth = $state(272);
+  let messageListWidth = $state(430);
+  let activeResize = $state.raw<ResizeState | null>(null);
 
   let selectedAccount = $derived(
     accounts.find((account) => account.id === selectedAccountId) ?? null,
@@ -116,9 +143,30 @@
   let allVisibleSelected = $derived(
     messages.length > 0 && selectedMessageIds.length === messages.length,
   );
+  let mailGridColumns = $derived(
+    `${accountPanelWidth}px ${panelHandleWidth}px ${messageListWidth}px ${panelHandleWidth}px minmax(${minMessagePanelWidth}px, 1fr)`,
+  );
 
   $effect(() => {
     applyTheme(theme);
+  });
+
+  $effect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+
+    let unlisten: (() => void) | undefined;
+    void import("@tauri-apps/api/event").then(({ listen }) => {
+      void listen<"general" | "accounts" | "advanced">(
+        "open-settings",
+        (event) => openSettings(event.payload ?? "general"),
+      ).then((nextUnlisten) => {
+        unlisten = nextUnlisten;
+      });
+    });
+
+    return () => {
+      unlisten?.();
+    };
   });
 
   function applyTheme(mode: ThemeMode) {
@@ -349,8 +397,14 @@
   }
 
   async function removeAccount(accountId: string) {
+    if (!window.confirm("Remove this mail account from Shitou Mail?")) {
+      return;
+    }
     await api.removeAccount(accountId);
     accounts = accounts.filter((account) => account.id !== accountId);
+    const { [accountId]: _removed, ...remainingColors } =
+      accountColorOverrides;
+    accountColorOverrides = remainingColors;
     if (selectedAccountId === accountId) {
       selectedAccountId = accounts[0]?.id || "";
       folders = [];
@@ -364,6 +418,46 @@
   async function changeTheme(nextTheme: ThemeMode) {
     theme = nextTheme;
     await api.setTheme(nextTheme);
+  }
+
+  function openSettings(tab: "general" | "accounts" | "advanced" = "general") {
+    settingsTab = tab;
+    accountPanelOpen = false;
+    settingsOpen = true;
+  }
+
+  function logout() {
+    if (!window.confirm("Log out of Shitou Mail?")) return;
+    isSignedIn = false;
+    selectedMessage = null;
+    selectedMessageIds = [];
+    selectionMode = false;
+    settingsOpen = false;
+  }
+
+  function updateAccountColor(accountId: string, color: string) {
+    accountColorOverrides = { ...accountColorOverrides, [accountId]: color };
+  }
+
+  function deleteUserAccount() {
+    if (
+      !window.confirm(
+        "Delete this Shitou Mail account from this device? Local demo session data will be cleared.",
+      )
+    ) {
+      return;
+    }
+    accounts = [];
+    folders = [];
+    foldersByAccount = {};
+    messages = [];
+    selectedAccountId = "";
+    selectedFolderId = "";
+    selectedMessage = null;
+    selectedMessageIds = [];
+    accountColorOverrides = {};
+    settingsOpen = false;
+    isSignedIn = false;
   }
 
   function formatRelative(value: string | null) {
@@ -385,6 +479,7 @@
   }
 
   function accountColor(accountId: string) {
+    if (accountColorOverrides[accountId]) return accountColorOverrides[accountId];
     const index = accounts.findIndex((account) => account.id === accountId);
     return accountColors[Math.max(0, index) % accountColors.length];
   }
@@ -401,7 +496,100 @@
     if (folderId.includes("spam")) return AlertCircle;
     return Inbox;
   }
+
+  function clamp(value: number, min: number, max: number) {
+    return Math.min(Math.max(value, min), max);
+  }
+
+  function availablePanelWidth() {
+    return (
+      mailShell?.getBoundingClientRect().width ??
+      document.documentElement.clientWidth
+    ) - panelHandleWidth * 2;
+  }
+
+  function resizeAccountDivider(nextAccountWidth: number) {
+    const totalLeftWidth = accountPanelWidth + messageListWidth;
+    accountPanelWidth = clamp(
+      nextAccountWidth,
+      minAccountPanelWidth,
+      Math.min(maxAccountPanelWidth, totalLeftWidth - minMessageListWidth),
+    );
+    messageListWidth = totalLeftWidth - accountPanelWidth;
+  }
+
+  function resizeMessageDivider(nextMessageListWidth: number) {
+    const maxWidth = Math.min(
+      maxMessageListWidth,
+      availablePanelWidth() - accountPanelWidth - minMessagePanelWidth,
+    );
+    messageListWidth = clamp(
+      nextMessageListWidth,
+      minMessageListWidth,
+      Math.max(minMessageListWidth, maxWidth),
+    );
+  }
+
+  function startPanelResize(target: ResizeTarget, event: PointerEvent) {
+    event.preventDefault();
+    activeResize = {
+      target,
+      startX: event.clientX,
+      startAccountWidth: accountPanelWidth,
+      startMessageListWidth: messageListWidth,
+    };
+  }
+
+  function updatePanelResize(event: PointerEvent) {
+    if (!activeResize) return;
+
+    const delta = event.clientX - activeResize.startX;
+    if (activeResize.target === "accounts") {
+      const totalLeftWidth =
+        activeResize.startAccountWidth + activeResize.startMessageListWidth;
+      accountPanelWidth = clamp(
+        activeResize.startAccountWidth + delta,
+        minAccountPanelWidth,
+        Math.min(maxAccountPanelWidth, totalLeftWidth - minMessageListWidth),
+      );
+      messageListWidth = totalLeftWidth - accountPanelWidth;
+    } else {
+      const maxWidth = Math.min(
+        maxMessageListWidth,
+        availablePanelWidth() -
+          activeResize.startAccountWidth -
+          minMessagePanelWidth,
+      );
+      messageListWidth = clamp(
+        activeResize.startMessageListWidth + delta,
+        minMessageListWidth,
+        Math.max(minMessageListWidth, maxWidth),
+      );
+    }
+  }
+
+  function stopPanelResize() {
+    activeResize = null;
+  }
+
+  function handlePanelResizeKey(target: ResizeTarget, event: KeyboardEvent) {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+
+    event.preventDefault();
+    const delta = event.key === "ArrowRight" ? 16 : -16;
+    if (target === "accounts") {
+      resizeAccountDivider(accountPanelWidth + delta);
+    } else {
+      resizeMessageDivider(messageListWidth + delta);
+    }
+  }
 </script>
+
+<svelte:window
+  onpointermove={updatePanelResize}
+  onpointerup={stopPanelResize}
+  onpointercancel={stopPanelResize}
+/>
 
 {#if !isSignedIn}
   <main
@@ -498,7 +686,12 @@
   </main>
 {:else}
   <main
-    class="grid h-screen grid-cols-[272px_minmax(320px,430px)_minmax(420px,1fr)] bg-ink-50 text-ink-900 dark:bg-slate-950 dark:text-slate-100"
+    bind:this={mailShell}
+    class={[
+      "grid h-screen bg-ink-50 text-ink-900 dark:bg-slate-950 dark:text-slate-100",
+      activeResize ? "cursor-col-resize select-none" : "",
+    ]}
+    style:grid-template-columns={mailGridColumns}
   >
     <aside
       class="flex min-w-0 flex-col border-r border-ink-200 bg-white/80 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90"
@@ -582,33 +775,6 @@
             </div>
           </section>
         {/if}
-
-        <div class="mb-3 flex items-center justify-between gap-2">
-          <button
-            class="inline-flex h-9 items-center gap-2 rounded-md border border-ink-200 bg-white px-3 text-sm font-medium hover:bg-ink-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"
-            type="button"
-            onclick={() => void syncAll()}
-            disabled={appBusy}
-          >
-            <RefreshCw size={16} class={appBusy ? "animate-spin" : ""} /> Sync
-          </button>
-          <div class="relative">
-            <select
-              class="h-9 appearance-none rounded-md border-ink-200 bg-white pl-3 pr-8 text-sm dark:border-slate-800 dark:bg-slate-900"
-              bind:value={theme}
-              onchange={(event) =>
-                void changeTheme(event.currentTarget.value as ThemeMode)}
-            >
-              {#each themeOptions as option (option.value)}
-                <option value={option.value}>{option.label}</option>
-              {/each}
-            </select>
-            <ChevronDown
-              class="pointer-events-none absolute right-2 top-2.5 text-ink-400"
-              size={15}
-            />
-          </div>
-        </div>
 
         {#if offlineAccounts}
           <div
@@ -724,7 +890,40 @@
           {/each}
         </div>
       </div>
+
+      <div class="border-t border-ink-200 p-3 dark:border-slate-800">
+        <div class="flex items-center gap-2">
+          <button
+            class="flex h-10 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-3 text-sm font-semibold text-ink-700 transition-colors duration-200 hover:bg-ink-100 focus:outline-none focus:ring-2 focus:ring-signal-500 dark:text-slate-200 dark:hover:bg-slate-800"
+            type="button"
+            onclick={() => openSettings("general")}
+          >
+            <Settings size={17} /> Settings
+          </button>
+          <button
+            class="inline-flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-md border border-ink-200 bg-white px-3 text-sm font-semibold text-ink-700 transition-colors duration-200 hover:bg-ink-50 focus:outline-none focus:ring-2 focus:ring-signal-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            type="button"
+            onclick={() => void syncAll()}
+            disabled={appBusy}
+          >
+            <RefreshCw size={16} class={appBusy ? "animate-spin" : ""} />
+            Sync
+          </button>
+        </div>
+      </div>
     </aside>
+
+    <button
+      class="group relative cursor-col-resize border-r border-ink-200 bg-ink-100/70 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-signal-500 dark:border-slate-800 dark:bg-slate-900"
+      type="button"
+      aria-label="Resize accounts panel. Drag or use left and right arrow keys."
+      onpointerdown={(event) => startPanelResize("accounts", event)}
+      onkeydown={(event) => handlePanelResizeKey("accounts", event)}
+    >
+      <span
+        class="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 rounded-full bg-transparent transition-colors group-hover:bg-signal-500/70 group-focus:bg-signal-500/70"
+      ></span>
+    </button>
 
     <section
       class="flex min-w-0 flex-col border-r border-ink-200 bg-ink-50 dark:border-slate-800 dark:bg-slate-950"
@@ -889,6 +1088,18 @@
       </div>
     </section>
 
+    <button
+      class="group relative cursor-col-resize border-r border-ink-200 bg-ink-100/70 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-signal-500 dark:border-slate-800 dark:bg-slate-900"
+      type="button"
+      aria-label="Resize message list panel. Drag or use left and right arrow keys."
+      onpointerdown={(event) => startPanelResize("message", event)}
+      onkeydown={(event) => handlePanelResizeKey("message", event)}
+    >
+      <span
+        class="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 rounded-full bg-transparent transition-colors group-hover:bg-signal-500/70 group-focus:bg-signal-500/70"
+      ></span>
+    </button>
+
     <article
       class="mail-scrollbar min-w-0 overflow-y-auto bg-white dark:bg-slate-900"
     >
@@ -971,5 +1182,273 @@
         </div>
       {/if}
     </article>
+
+    {#if settingsOpen}
+      <div
+        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-sm"
+        role="presentation"
+        onclick={(event) => {
+          if (event.target === event.currentTarget) settingsOpen = false;
+        }}
+      >
+        <div
+          class="flex max-h-[88vh] w-full max-w-4xl overflow-hidden rounded-lg border border-ink-200 bg-white shadow-soft dark:border-slate-800 dark:bg-slate-900"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="settings-title"
+        >
+          <div
+            class="w-56 shrink-0 border-r border-ink-200 bg-ink-50 p-3 dark:border-slate-800 dark:bg-slate-950"
+          >
+            <div class="mb-3 flex items-center justify-between px-2">
+              <div>
+                <h2 id="settings-title" class="text-sm font-semibold">
+                  Settings
+                </h2>
+                <p class="mt-0.5 text-xs text-ink-500 dark:text-slate-400">
+                  Mail preferences
+                </p>
+              </div>
+              <button
+                class="grid size-8 cursor-pointer place-items-center rounded-md text-ink-500 transition-colors duration-200 hover:bg-ink-100 hover:text-ink-950 focus:outline-none focus:ring-2 focus:ring-signal-500 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+                type="button"
+                aria-label="Close settings"
+                onclick={() => (settingsOpen = false)}
+              >
+                <X size={17} />
+              </button>
+            </div>
+
+            <div class="space-y-1" role="tablist" aria-label="Settings tabs">
+              {#each [
+                { id: "general", label: "General", icon: Monitor },
+                { id: "accounts", label: "Accounts", icon: UserPlus },
+                { id: "advanced", label: "Advanced", icon: ShieldAlert },
+              ] as tab (tab.id)}
+                {@const TabIcon = tab.icon}
+                <button
+                  class={[
+                    "flex h-10 w-full cursor-pointer items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-signal-500",
+                    settingsTab === tab.id
+                      ? "bg-signal-600 text-white"
+                      : "text-ink-600 hover:bg-white hover:text-ink-950 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white",
+                  ]}
+                  type="button"
+                  role="tab"
+                  aria-selected={settingsTab === tab.id}
+                  onclick={() =>
+                    (settingsTab = tab.id as
+                      | "general"
+                      | "accounts"
+                      | "advanced")}
+                >
+                  <TabIcon size={16} /> {tab.label}
+                </button>
+              {/each}
+            </div>
+          </div>
+
+          <div class="mail-scrollbar min-w-0 flex-1 overflow-y-auto p-6">
+            {#if settingsTab === "general"}
+              <section class="space-y-6">
+                <div>
+                  <h3 class="text-lg font-semibold">General</h3>
+                  <p class="mt-1 text-sm text-ink-500 dark:text-slate-400">
+                    Set the app appearance and session state.
+                  </p>
+                </div>
+
+                <div>
+                  <div class="mb-2 text-sm font-semibold">Appearance</div>
+                  <div
+                    class="grid grid-cols-3 gap-2 rounded-lg border border-ink-200 bg-ink-50 p-1 dark:border-slate-800 dark:bg-slate-950"
+                  >
+                    {#each themeOptions as option (option.value)}
+                      <button
+                        class={[
+                          "inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md text-sm font-semibold transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-signal-500",
+                          theme === option.value
+                            ? "bg-white text-ink-950 shadow-sm dark:bg-slate-800 dark:text-white"
+                            : "text-ink-600 hover:bg-white/70 dark:text-slate-300 dark:hover:bg-slate-900",
+                        ]}
+                        type="button"
+                        onclick={() => void changeTheme(option.value)}
+                      >
+                        {#if option.value === "dark"}<Moon size={16} />{:else if option.value === "light"}<Sun size={16} />{:else}<Monitor size={16} />{/if}
+                        {option.label}
+                      </button>
+                    {/each}
+                  </div>
+                </div>
+
+                <div
+                  class="rounded-lg border border-ink-200 p-4 dark:border-slate-800"
+                >
+                  <div class="flex items-center justify-between gap-4">
+                    <div>
+                      <div class="text-sm font-semibold">Session</div>
+                      <p class="mt-1 text-sm text-ink-500 dark:text-slate-400">
+                        Log out of the current local mail session.
+                      </p>
+                    </div>
+                    <button
+                      class="inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border border-ink-200 bg-white px-3 text-sm font-semibold text-ink-700 transition-colors duration-200 hover:bg-ink-50 focus:outline-none focus:ring-2 focus:ring-signal-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
+                      type="button"
+                      onclick={logout}
+                    >
+                      <LogOut size={16} /> Log out
+                    </button>
+                  </div>
+                </div>
+              </section>
+            {:else if settingsTab === "accounts"}
+              <section class="space-y-6">
+                <div>
+                  <h3 class="text-lg font-semibold">Accounts</h3>
+                  <p class="mt-1 text-sm text-ink-500 dark:text-slate-400">
+                    Add mailboxes, remove mailboxes, and tune account colors.
+                  </p>
+                </div>
+
+                <div
+                  class="rounded-lg border border-ink-200 bg-ink-50 p-4 dark:border-slate-800 dark:bg-slate-950"
+                >
+                  <div class="text-sm font-semibold">Add account</div>
+                  <div class="mt-3 grid gap-2 sm:grid-cols-2">
+                    <button
+                      class="h-10 cursor-pointer rounded-md border border-ink-200 bg-white px-3 text-sm font-semibold text-ink-700 transition-colors duration-200 hover:bg-ink-50 focus:outline-none focus:ring-2 focus:ring-signal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                      type="button"
+                      onclick={() => void connectProvider("gmail")}>Gmail</button
+                    >
+                    <button
+                      class="h-10 cursor-pointer rounded-md border border-ink-200 bg-white px-3 text-sm font-semibold text-ink-700 transition-colors duration-200 hover:bg-ink-50 focus:outline-none focus:ring-2 focus:ring-signal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                      type="button"
+                      onclick={() => void connectProvider("outlook")}>Outlook</button
+                    >
+                  </div>
+                  <div class="mt-3 grid gap-2 md:grid-cols-[1fr_1fr_auto]">
+                    <label class="sr-only" for="settings-icloud-email"
+                      >iCloud email</label
+                    >
+                    <input
+                      id="settings-icloud-email"
+                      class="h-10 rounded-md border-ink-200 text-sm focus:border-signal-500 focus:ring-signal-500 dark:border-slate-700 dark:bg-slate-900"
+                      type="email"
+                      placeholder="name@icloud.com"
+                      bind:value={icloudEmail}
+                    />
+                    <label class="sr-only" for="settings-icloud-password"
+                      >iCloud app-specific password</label
+                    >
+                    <input
+                      id="settings-icloud-password"
+                      class="h-10 rounded-md border-ink-200 text-sm focus:border-signal-500 focus:ring-signal-500 dark:border-slate-700 dark:bg-slate-900"
+                      type="password"
+                      placeholder="App-specific password"
+                      bind:value={icloudPassword}
+                    />
+                    <button
+                      class="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md bg-ink-900 px-3 text-sm font-semibold text-white transition-colors duration-200 hover:bg-ink-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-950"
+                      type="button"
+                      disabled={!icloudEmail || !icloudPassword}
+                      onclick={() => void connectIcloud()}
+                    >
+                      <Apple size={16} /> Connect
+                    </button>
+                  </div>
+                </div>
+
+                <div class="space-y-3">
+                  {#each accounts as account (account.id)}
+                    <div
+                      class="rounded-lg border border-ink-200 p-4 dark:border-slate-800"
+                    >
+                      <div class="flex items-start justify-between gap-4">
+                        <div class="min-w-0">
+                          <div class="flex min-w-0 items-center gap-2">
+                            <span
+                              class="size-3 shrink-0 rounded-full"
+                              style:background-color={accountColor(account.id)}
+                            ></span>
+                            <div class="truncate text-sm font-semibold">
+                              {account.displayName}
+                            </div>
+                          </div>
+                          <div
+                            class="mt-1 truncate text-sm text-ink-500 dark:text-slate-400"
+                          >
+                            {account.email}
+                          </div>
+                        </div>
+                        <button
+                          class="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-red-200 bg-white px-3 text-sm font-semibold text-red-700 transition-colors duration-200 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 dark:border-red-950 dark:bg-slate-950 dark:text-red-300 dark:hover:bg-red-950/40"
+                          type="button"
+                          onclick={() => void removeAccount(account.id)}
+                        >
+                          <Trash2 size={15} /> Remove
+                        </button>
+                      </div>
+                      <div class="mt-4 flex flex-wrap items-center gap-2">
+                        <span
+                          class="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-slate-400"
+                          ><Palette size={14} /> Color</span
+                        >
+                        {#each accountColors as color (color)}
+                          <button
+                            class={[
+                              "size-7 cursor-pointer rounded-full border-2 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-signal-500",
+                              accountColor(account.id) === color
+                                ? "border-ink-900 dark:border-white"
+                                : "border-transparent hover:border-ink-300 dark:hover:border-slate-600",
+                            ]}
+                            style:background-color={color}
+                            type="button"
+                            aria-label={`Set ${account.displayName} color to ${color}`}
+                            onclick={() => updateAccountColor(account.id, color)}
+                          ></button>
+                        {/each}
+                      </div>
+                    </div>
+                  {/each}
+                </div>
+              </section>
+            {:else}
+              <section class="space-y-6">
+                <div>
+                  <h3 class="text-lg font-semibold">Advanced</h3>
+                  <p class="mt-1 text-sm text-ink-500 dark:text-slate-400">
+                    Destructive account controls for this device.
+                  </p>
+                </div>
+                <div
+                  class="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-950 dark:bg-red-950/30"
+                >
+                  <div class="flex items-start justify-between gap-4">
+                    <div>
+                      <div
+                        class="flex items-center gap-2 text-sm font-semibold text-red-900 dark:text-red-100"
+                      >
+                        <ShieldAlert size={17} /> Delete account
+                      </div>
+                      <p class="mt-1 text-sm text-red-700 dark:text-red-200">
+                        Clears the local Shitou Mail session and removes the
+                        connected mailboxes from this device.
+                      </p>
+                    </div>
+                    <button
+                      class="inline-flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-md bg-red-600 px-3 text-sm font-semibold text-white transition-colors duration-200 hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-red-500"
+                      type="button"
+                      onclick={deleteUserAccount}
+                    >
+                      <Trash2 size={16} /> Delete Account
+                    </button>
+                  </div>
+                </div>
+              </section>
+            {/if}
+          </div>
+        </div>
+      </div>
+    {/if}
   </main>
 {/if}
