@@ -1,11 +1,19 @@
+mod error;
+mod models;
+mod state;
+
 use chrono::{DateTime, Utc};
+use error::{AppError, CommandResult};
+use models::{
+    Attachment, AuthSession, AuthStartResult, CountResult, Folder, MailAccount, MessageDetail,
+    MessageSummary, Provider, ProviderAuthStart, Removed, ThemeResult,
+};
 use rusqlite::{params, Connection};
-use serde::{Deserialize, Serialize};
+use state::AppState;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager};
-use thiserror::Error;
 use uuid::Uuid;
 
 const SERVICE_NAME: &str = "com.shitou.mail";
@@ -14,153 +22,11 @@ const SETTINGS_MENU_ID: &str = "settings";
 const GMAIL_READONLY_SCOPE: &str = "https://www.googleapis.com/auth/gmail.readonly";
 const OUTLOOK_READONLY_SCOPES: &[&str] = &["openid", "email", "offline_access", "Mail.Read"];
 
-#[derive(Debug, Error)]
-enum AppError {
-    #[error("database error: {0}")]
-    Database(#[from] rusqlite::Error),
-    #[error("keychain error: {0}")]
-    Keychain(#[from] keyring::Error),
-    #[error("unsupported provider: {0}")]
-    UnsupportedProvider(String),
-    #[error("missing environment variable: {0}")]
-    MissingEnv(String),
-    #[error("invalid input: {0}")]
-    InvalidInput(String),
-    #[error("app data directory unavailable")]
-    AppDataDirUnavailable,
-}
-
-impl serde::Serialize for AppError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
-    }
-}
-
-type CommandResult<T> = Result<T, AppError>;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct AuthStartResult {
-    sent: bool,
-    email: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct AuthSession {
-    email: String,
-    user_id: String,
-    authenticated: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum Provider {
-    Gmail,
-    Outlook,
-    Icloud,
-}
-
-impl Provider {
-    fn from_input(value: &str) -> CommandResult<Self> {
-        match value {
-            "gmail" => Ok(Self::Gmail),
-            "outlook" => Ok(Self::Outlook),
-            "icloud" => Ok(Self::Icloud),
-            other => Err(AppError::UnsupportedProvider(other.to_string())),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct MailAccount {
-    id: String,
-    provider: Provider,
-    email: String,
-    display_name: String,
-    sync_status: String,
-    last_synced_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Folder {
-    id: String,
-    account_id: String,
-    name: String,
-    unread_count: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Attachment {
-    id: String,
-    file_name: String,
-    mime_type: String,
-    byte_size: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct MessageSummary {
-    id: String,
-    folder_id: String,
-    account_id: String,
-    provider_message_id: String,
-    sender: String,
-    recipients: Vec<String>,
-    subject: String,
-    preview: String,
-    received_at: DateTime<Utc>,
-    has_attachments: bool,
-    is_unread: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct MessageDetail {
-    #[serde(flatten)]
-    summary: MessageSummary,
-    body_html: String,
-    body_text: String,
-    attachments: Vec<Attachment>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ProviderAuthStart {
-    provider: Provider,
-    auth_url: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Removed {
-    removed: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ThemeResult {
-    mode: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CountResult {
-    count: usize,
-}
-
-struct AppState {
-    db: Mutex<Connection>,
-}
-
 fn app_db_path(app: &AppHandle) -> CommandResult<PathBuf> {
-    let mut dir = app.path().app_data_dir().map_err(|_| AppError::AppDataDirUnavailable)?;
+    let mut dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| AppError::AppDataDirUnavailable)?;
     std::fs::create_dir_all(&dir).map_err(|_| AppError::AppDataDirUnavailable)?;
     dir.push("mailbox.sqlite3");
     Ok(dir)
@@ -363,7 +229,9 @@ fn insert_message(
 #[tauri::command]
 fn auth_start_magic_link(email: String) -> CommandResult<AuthStartResult> {
     if !email.contains('@') {
-        return Err(AppError::InvalidInput("enter a valid email address".to_string()));
+        return Err(AppError::InvalidInput(
+            "enter a valid email address".to_string(),
+        ));
     }
 
     // Neon Auth configuration lives outside the desktop binary. The desktop app starts the flow
@@ -374,7 +242,9 @@ fn auth_start_magic_link(email: String) -> CommandResult<AuthStartResult> {
 #[tauri::command]
 fn auth_complete_callback(url: String) -> CommandResult<AuthSession> {
     if !url.starts_with("shitou://auth/callback") {
-        return Err(AppError::InvalidInput("unexpected auth callback URL".to_string()));
+        return Err(AppError::InvalidInput(
+            "unexpected auth callback URL".to_string(),
+        ));
     }
 
     Ok(AuthSession {
@@ -408,19 +278,31 @@ fn account_connect_provider(provider: String) -> CommandResult<ProviderAuthStart
                 urlencoding::encode(&OUTLOOK_READONLY_SCOPES.join(" "))
             )
         }
-        Provider::Icloud => return Err(AppError::UnsupportedProvider("icloud uses IMAP setup".to_string())),
+        Provider::Icloud => {
+            return Err(AppError::UnsupportedProvider(
+                "icloud uses IMAP setup".to_string(),
+            ))
+        }
     };
 
     Ok(ProviderAuthStart { provider, auth_url })
 }
 
 #[tauri::command]
-fn account_connect_icloud(state: tauri::State<AppState>, email: String, app_password: String) -> CommandResult<MailAccount> {
+fn account_connect_icloud(
+    state: tauri::State<AppState>,
+    email: String,
+    app_password: String,
+) -> CommandResult<MailAccount> {
     if !email.contains('@') {
-        return Err(AppError::InvalidInput("enter a valid iCloud email address".to_string()));
+        return Err(AppError::InvalidInput(
+            "enter a valid iCloud email address".to_string(),
+        ));
     }
     if app_password.trim().is_empty() {
-        return Err(AppError::InvalidInput("enter an app-specific password".to_string()));
+        return Err(AppError::InvalidInput(
+            "enter an app-specific password".to_string(),
+        ));
     }
 
     let id = Uuid::new_v4().to_string();
@@ -464,7 +346,10 @@ fn sync_account(state: tauri::State<AppState>, account_id: String) -> CommandRes
 fn sync_all(state: tauri::State<AppState>) -> CommandResult<Vec<MailAccount>> {
     let conn = state.db.lock().expect("database mutex poisoned");
     let now = Utc::now().to_rfc3339();
-    conn.execute("UPDATE accounts SET sync_status = 'idle', last_synced_at = ?1", params![now])?;
+    conn.execute(
+        "UPDATE accounts SET sync_status = 'idle', last_synced_at = ?1",
+        params![now],
+    )?;
     list_accounts_from_db(&conn)
 }
 
@@ -492,7 +377,11 @@ fn list_folders(state: tauri::State<AppState>, account_id: String) -> CommandRes
 }
 
 #[tauri::command]
-fn list_messages(state: tauri::State<AppState>, folder_id: String, query: String) -> CommandResult<Vec<MessageSummary>> {
+fn list_messages(
+    state: tauri::State<AppState>,
+    folder_id: String,
+    query: String,
+) -> CommandResult<Vec<MessageSummary>> {
     let conn = state.db.lock().expect("database mutex poisoned");
     let pattern = format!("%{}%", query);
     let messages = if let Some(folder_names) = aggregate_folder_names(&folder_id) {
@@ -528,7 +417,10 @@ fn aggregate_folder_names(folder_id: &str) -> Option<&'static str> {
 }
 
 #[tauri::command]
-fn mark_messages_read(state: tauri::State<AppState>, message_ids: Vec<String>) -> CommandResult<CountResult> {
+fn mark_messages_read(
+    state: tauri::State<AppState>,
+    message_ids: Vec<String>,
+) -> CommandResult<CountResult> {
     if message_ids.is_empty() {
         return Ok(CountResult { count: 0 });
     }
@@ -537,7 +429,8 @@ fn mark_messages_read(state: tauri::State<AppState>, message_ids: Vec<String>) -
     let tx = conn.unchecked_transaction()?;
     let mut updated = 0;
     {
-        let mut stmt = tx.prepare("UPDATE messages SET is_unread = 0 WHERE id = ?1 AND is_unread = 1")?;
+        let mut stmt =
+            tx.prepare("UPDATE messages SET is_unread = 0 WHERE id = ?1 AND is_unread = 1")?;
         for message_id in &message_ids {
             updated += stmt.execute(params![message_id])?;
         }
@@ -548,7 +441,10 @@ fn mark_messages_read(state: tauri::State<AppState>, message_ids: Vec<String>) -
 }
 
 #[tauri::command]
-fn delete_messages(state: tauri::State<AppState>, message_ids: Vec<String>) -> CommandResult<CountResult> {
+fn delete_messages(
+    state: tauri::State<AppState>,
+    message_ids: Vec<String>,
+) -> CommandResult<CountResult> {
     if message_ids.is_empty() {
         return Ok(CountResult { count: 0 });
     }
@@ -650,7 +546,9 @@ fn get_message(state: tauri::State<AppState>, message_id: String) -> CommandResu
 #[tauri::command]
 fn set_theme(state: tauri::State<AppState>, mode: String) -> CommandResult<ThemeResult> {
     if !matches!(mode.as_str(), "system" | "light" | "dark") {
-        return Err(AppError::InvalidInput("theme must be system, light, or dark".to_string()));
+        return Err(AppError::InvalidInput(
+            "theme must be system, light, or dark".to_string(),
+        ));
     }
 
     let conn = state.db.lock().expect("database mutex poisoned");
@@ -669,7 +567,8 @@ fn list_accounts_from_db(conn: &Connection) -> CommandResult<Vec<MailAccount>> {
             let last_synced_at: Option<String> = row.get(5)?;
             Ok(MailAccount {
                 id: row.get(0)?,
-                provider: Provider::from_input(&provider).map_err(|_| rusqlite::Error::InvalidQuery)?,
+                provider: Provider::from_input(&provider)
+                    .map_err(|_| rusqlite::Error::InvalidQuery)?,
                 email: row.get(2)?,
                 display_name: row.get(3)?,
                 sync_status: row.get(4)?,
@@ -731,7 +630,11 @@ fn app_menu<R: tauri::Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<
         name: Some(pkg_info.name.clone()),
         version: Some(pkg_info.version.to_string()),
         copyright: config.bundle.copyright.clone(),
-        authors: config.bundle.publisher.clone().map(|publisher| vec![publisher]),
+        authors: config
+            .bundle
+            .publisher
+            .clone()
+            .map(|publisher| vec![publisher]),
         ..Default::default()
     };
 
