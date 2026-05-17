@@ -1,0 +1,26 @@
+[package]
+name = "shitou-mail"
+version = "0.1.0"
+description = "Read-only macOS desktop mail client"
+authors = ["Shitou Mail"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "shitou_mail_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+keyring = { version = "3.6", features = ["apple-native"] }
+rusqlite = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl", "chrono"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = ["macos-private-api"] }
+tauri-plugin-deep-link = "2"
+thiserror = "2"
+urlencoding = "2"
+uuid = { version = "1", features = ["serde", "v4"] }

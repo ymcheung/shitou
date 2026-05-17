@@ -1,0 +1,52 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Shitou Mail",
+  "version": "0.1.0",
+  "identifier": "com.shitou.mail",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../build"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "title": "Shitou Mail",
+        "width": 1280,
+        "height": 840,
+        "minWidth": 1080,
+        "minHeight": 720,
+        "resizable": true,
+        "fullscreen": false,
+        "titleBarStyle": "Overlay"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.neon.tech https://accounts.google.com https://oauth2.googleapis.com https://gmail.googleapis.com https://login.microsoftonline.com https://graph.microsoft.com"
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["shitou"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "app"],
+    "category": "Productivity",
+    "shortDescription": "Read-only offline mail for macOS",
+    "longDescription": "A macOS desktop mail reader with magic-link auth, read-only mail access, and encrypted local offline storage.",
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "signingIdentity": null,
+      "entitlements": null,
+      "exceptionDomain": "",
+      "frameworks": [],
+      "providerShortName": null
+    }
+  }
+}

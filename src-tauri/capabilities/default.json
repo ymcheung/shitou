@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default desktop capability for read-only mail app commands.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

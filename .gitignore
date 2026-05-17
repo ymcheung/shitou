@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+
+# Package manager and local tool caches
+.npm-cache/
+.pnpm-store/
+.yarn/
+.cargo-home/
+.cargo-target-check/
+.playwright-mcp/
+
+# SvelteKit / Vite build output
+.svelte-kit/
+.vite/
+build/
+dist/
+
+# Tauri / Rust build output
+target/
+src-tauri/target/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
