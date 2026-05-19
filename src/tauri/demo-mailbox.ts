@@ -38,15 +38,15 @@ let demoMessages: MessageDetail[] = [
     providerMessageId: 'gmail:msg-1',
     sender: 'Neon Auth',
     recipients: ['reader@gmail.com'],
-    subject: 'Magic link sign-in configured',
-    preview: 'Password login is disabled and email magic links are the only registration path.',
+    subject: 'Email OTP sign-in configured',
+    preview: 'Password login is disabled and email one-time codes are the only registration path.',
     receivedAt: new Date(Date.now() - 1000 * 60 * 20).toISOString(),
     hasAttachments: false,
     isUnread: true,
     bodyText:
-      'Magic link sign-in is configured for the desktop client. Password, social, calendar, reminder, contact, and notification features stay out of scope.\n\nPriya Shah\nProduct Security\nNeon Auth',
+      'Email OTP sign-in is configured for the desktop client. Resend SMTP handles production delivery through Neon Auth. Password, social, calendar, reminder, contact, and notification features stay out of scope.\n\nPriya Shah\nProduct Security\nNeon Auth',
     bodyHtml:
-      '<p>Magic link sign-in is configured for the desktop client.</p><p>Password, social, calendar, reminder, contact, and notification features stay out of scope.</p><div class="signature"><p>Priya Shah<br>Product Security<br>Neon Auth</p></div>',
+      '<p>Email OTP sign-in is configured for the desktop client. Resend SMTP handles production delivery through Neon Auth.</p><p>Password, social, calendar, reminder, contact, and notification features stay out of scope.</p><div class="signature"><p>Priya Shah<br>Product Security<br>Neon Auth</p></div>',
     attachments: []
   },
   {

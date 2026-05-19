@@ -3,19 +3,23 @@
 
   let {
     email = $bindable(''),
-    magicLinkSent,
+    otp = $bindable(''),
+    otpSent,
     busy,
+    authAction = 'idle',
     error,
-    onSendMagicLink,
-    onCompleteMagicLink,
+    onSendOtp,
+    onVerifyOtp,
     onStartDemo
   }: {
     email: string;
-    magicLinkSent: boolean;
+    otp: string;
+    otpSent: boolean;
     busy: boolean;
+    authAction: 'idle' | 'sendingOtp' | 'verifyingOtp' | 'demo';
     error: string;
-    onSendMagicLink: () => void | Promise<void>;
-    onCompleteMagicLink: () => void | Promise<void>;
+    onSendOtp: () => void | Promise<void>;
+    onVerifyOtp: () => void | Promise<void>;
     onStartDemo: () => void | Promise<void>;
   } = $props();
 </script>
@@ -36,7 +40,7 @@
       <div class="flex items-start gap-3 rounded-lg border border-indigo-200 bg-indigo-50/90 p-3 text-sm leading-6 text-zinc-800 dark:border-indigo-400/25 dark:bg-indigo-400/10 dark:text-zinc-100">
         <ShieldCheck class="mt-0.5 shrink-0 text-indigo-700 dark:text-indigo-300" size={18} />
         <p>
-          Registration and sign-in use email magic links only. Password, social, calendar, reminder, contact, and notification permissions
+          Registration and sign-in use email one-time codes only. Password, social, calendar, reminder, contact, and notification permissions
           are not part of this app.
         </p>
       </div>
@@ -45,7 +49,7 @@
         class="mt-5 space-y-4"
         onsubmit={(event) => {
           event.preventDefault();
-          void onSendMagicLink();
+          void (otpSent ? onVerifyOtp() : onSendOtp());
         }}
       >
         <label class="block">
@@ -56,9 +60,32 @@
             autocomplete="email"
             placeholder="you@example.com"
             bind:value={email}
+            disabled={authAction === 'sendingOtp'}
             required
           />
         </label>
+
+        {#if authAction === 'sendingOtp' && !otpSent}
+          <div class="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm font-medium text-indigo-950 dark:border-indigo-400/25 dark:bg-indigo-400/10 dark:text-indigo-100">
+            <Loader2 class="animate-spin" size={16} />
+            Sending one-time code...
+          </div>
+        {/if}
+
+        {#if otpSent}
+          <label class="block">
+            <span class="text-sm font-medium text-zinc-800 dark:text-zinc-100">Verification code</span>
+            <input
+              class="mt-2 h-11 w-full rounded-lg border-zinc-300 bg-white text-zinc-950 shadow-sm placeholder:text-zinc-400 focus:border-indigo-500 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
+              type="text"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              placeholder="123456"
+              bind:value={otp}
+              required
+            />
+          </label>
+        {/if}
 
         {#if error}
           <p class="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
@@ -72,22 +99,28 @@
           disabled={busy || !email}
           type="submit"
         >
-          {#if busy}<Loader2 class="animate-spin" size={16} />{:else}<KeyRound size={16} />{/if}
-          Send magic link
+          {#if authAction === 'sendingOtp' || authAction === 'verifyingOtp'}<Loader2 class="animate-spin" size={16} />{:else}<KeyRound size={16} />{/if}
+          {#if authAction === 'sendingOtp'}
+            Sending code...
+          {:else if authAction === 'verifyingOtp'}
+            Verifying code...
+          {:else}
+            {otpSent ? 'Verify code' : 'Send one-time code'}
+          {/if}
         </button>
       </form>
 
-      {#if magicLinkSent}
+      {#if otpSent}
         <div class="mt-5 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-950 dark:border-indigo-400/25 dark:bg-indigo-400/10 dark:text-indigo-100">
           <div class="flex items-center gap-2 font-medium">
-            <CheckCircle2 size={16} /> Magic link sent
+            <CheckCircle2 size={16} /> One-time code sent
           </div>
           <button
             class="mt-3 cursor-pointer text-sm font-semibold text-indigo-700 hover:text-indigo-600 dark:text-indigo-200 dark:hover:text-indigo-100"
             type="button"
-            onclick={() => void onCompleteMagicLink()}
+            onclick={() => void onSendOtp()}
           >
-            Complete sign-in from callback
+            Send a new code
           </button>
         </div>
       {/if}
@@ -99,7 +132,7 @@
           type="button"
           onclick={() => void onStartDemo()}
         >
-          {#if busy}<Loader2 class="animate-spin" size={16} />{:else}<UserRoundCheck size={16} />{/if}
+          {#if authAction === 'demo'}<Loader2 class="animate-spin" size={16} />{:else}<UserRoundCheck size={16} />{/if}
           Continue in demo mode
         </button>
         <p class="mt-2 text-xs leading-5 text-zinc-600 dark:text-zinc-400">

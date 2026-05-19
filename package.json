@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "tauri": "tauri"
+    "tauri": "NEON_AUTH_BASE_URL=\"https://ep-floral-heart-a7t3tanr.neonauth.ap-southeast-2.aws.neon.tech/neondb/auth\" tauri"
   },
   "dependencies": {
     "@lucide/svelte": "^1.16.0",

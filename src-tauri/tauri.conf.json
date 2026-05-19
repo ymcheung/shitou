@@ -40,7 +40,7 @@
     "targets": ["dmg", "app"],
     "category": "Productivity",
     "shortDescription": "Read-only offline mail for macOS",
-    "longDescription": "A macOS desktop mail reader with magic-link auth, read-only mail access, and encrypted local offline storage.",
+    "longDescription": "A macOS desktop mail reader with Email OTP auth, read-only mail access, and encrypted local offline storage.",
     "macOS": {
       "minimumSystemVersion": "12.0",
       "signingIdentity": null,

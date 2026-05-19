@@ -12,6 +12,10 @@ pub enum AppError {
     MissingEnv(String),
     #[error("invalid input: {0}")]
     InvalidInput(String),
+    #[error("auth error: {0}")]
+    Auth(String),
+    #[error("network error: {0}")]
+    Network(String),
     #[error("app data directory unavailable")]
     AppDataDirUnavailable,
 }

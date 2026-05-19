@@ -35,9 +35,14 @@
   } from "$lib/types";
 
   let email = $state("");
-  let magicLinkSent = $state(false);
+  let otp = $state("");
+  let otpSent = $state(false);
   let authBusy = $state(false);
+  let authAction = $state<"idle" | "sendingOtp" | "verifyingOtp" | "demo">(
+    "idle",
+  );
   let authError = $state("");
+  let authReady = $state(false);
   let isSignedIn = $state(false);
   let isDemoMode = $state(false);
   let session = $state.raw<AuthSession | null>(null);
@@ -102,6 +107,10 @@
   });
 
   $effect(() => {
+    void restoreSession();
+  });
+
+  $effect(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
 
     let unlisten: (() => void) | undefined;
@@ -119,31 +128,52 @@
     };
   });
 
-  async function sendMagicLink() {
-    authBusy = true;
-    authError = "";
-
+  async function restoreSession() {
     try {
-      await api.authStartMagicLink(email);
-      magicLinkSent = true;
+      const restoredSession = await api.authCurrentSession();
+      if (restoredSession?.authenticated) {
+        session = restoredSession;
+        isDemoMode = false;
+        isSignedIn = true;
+        await loadMailbox();
+      }
     } catch (error) {
       authError =
         error instanceof Error
           ? error.message
-          : "Unable to start magic-link sign-in.";
+          : "Unable to restore the local session.";
     } finally {
-      authBusy = false;
+      authReady = true;
     }
   }
 
-  async function completeMagicLinkSignIn() {
+  async function sendOtp() {
     authBusy = true;
+    authAction = "sendingOtp";
     authError = "";
 
     try {
-      session = await api.authCompleteCallback(
-        "shitou://auth/callback?token=magic-link",
-      );
+      await api.authSendEmailOtp(email);
+      otpSent = true;
+      otp = "";
+    } catch (error) {
+      authError =
+        error instanceof Error
+          ? error.message
+          : "Unable to send one-time code.";
+    } finally {
+      authBusy = false;
+      authAction = "idle";
+    }
+  }
+
+  async function verifyOtpSignIn() {
+    authBusy = true;
+    authAction = "verifyingOtp";
+    authError = "";
+
+    try {
+      session = await api.authVerifyEmailOtp(email, otp);
       isDemoMode = false;
       isSignedIn = true;
       await loadMailbox();
@@ -152,11 +182,13 @@
         error instanceof Error ? error.message : "Unable to complete sign-in.";
     } finally {
       authBusy = false;
+      authAction = "idle";
     }
   }
 
   async function startDemoMode() {
     authBusy = true;
+    authAction = "demo";
     authError = "";
 
     try {
@@ -170,6 +202,7 @@
         error instanceof Error ? error.message : "Unable to start demo mode.";
     } finally {
       authBusy = false;
+      authAction = "idle";
     }
   }
 
@@ -401,8 +434,9 @@
     settingsOpen = true;
   }
 
-  function logout() {
+  async function logout() {
     if (!window.confirm("Log out of Shitou Mail?")) return;
+    await api.authLogout();
     isSignedIn = false;
     isDemoMode = false;
     session = null;
@@ -416,7 +450,7 @@
     accountColorOverrides = { ...accountColorOverrides, [accountId]: color };
   }
 
-  function deleteUserAccount() {
+  async function deleteUserAccount() {
     if (
       !window.confirm(
         "Delete this Shitou Mail account from this device? Local demo session data will be cleared.",
@@ -424,6 +458,7 @@
     ) {
       return;
     }
+    await api.authLogout();
     accounts = [];
     folders = [];
     foldersByAccount = {};
@@ -527,14 +562,22 @@
   onpointercancel={stopPanelResize}
 />
 
-{#if !isSignedIn}
+{#if !authReady}
+  <div
+    class="flex h-screen items-center justify-center bg-zinc-100 text-sm text-zinc-600 dark:bg-zinc-950 dark:text-zinc-300"
+  >
+    Opening Shitou Mail...
+  </div>
+{:else if !isSignedIn}
   <AuthScreen
     bind:email
-    {magicLinkSent}
+    bind:otp
+    {otpSent}
     busy={authBusy}
+    {authAction}
     error={authError}
-    onSendMagicLink={sendMagicLink}
-    onCompleteMagicLink={completeMagicLinkSignIn}
+    onSendOtp={sendOtp}
+    onVerifyOtp={verifyOtpSignIn}
     onStartDemo={startDemoMode}
   />
 {:else}
@@ -577,7 +620,7 @@
       />
 
       <button
-        class="group relative cursor-col-resize bg-gradient-to-b from-zinc-200/0 to-zinc-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-zinc-500 dark:from-zinc-900/0 dark:to-zinc-900"
+        class="group relative cursor-col-resize bg-gradient-to-b from-zinc-200/0 to-zinc-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-zinc-500 dark:from-zinc-800/0 dark:to-zinc-800"
         type="button"
         aria-label="Resize accounts panel. Drag or use left and right arrow keys."
         onpointerdown={(event) => startPanelResize("accounts", event)}
@@ -611,7 +654,7 @@
       />
 
       <button
-        class="group relative cursor-col-resize bg-zinc-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-zinc-500 dark:bg-zinc-900"
+        class="group relative cursor-col-resize bg-zinc-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-zinc-500 dark:bg-zinc-800"
         type="button"
         aria-label="Resize message list panel. Drag or use left and right arrow keys."
         onpointerdown={(event) => startPanelResize("message", event)}

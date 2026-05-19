@@ -8,7 +8,10 @@ use models::{
     Attachment, AuthSession, AuthStartResult, CountResult, Folder, MailAccount, MessageDetail,
     MessageSummary, Provider, ProviderAuthStart, Removed, ThemeResult,
 };
-use rusqlite::{params, Connection};
+use reqwest::blocking::Client;
+use reqwest::StatusCode;
+use rusqlite::{params, Connection, OptionalExtension};
+use serde_json::{json, Value};
 use state::AppState;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -18,9 +21,94 @@ use uuid::Uuid;
 
 const SERVICE_NAME: &str = "com.shitou.mail";
 const MAILBOX_KEY_ACCOUNT: &str = "local-mailbox-sqlcipher-key";
+const AUTH_SESSION_SETTING_KEY: &str = "auth_session";
 const SETTINGS_MENU_ID: &str = "settings";
 const GMAIL_READONLY_SCOPE: &str = "https://www.googleapis.com/auth/gmail.readonly";
 const OUTLOOK_READONLY_SCOPES: &[&str] = &["openid", "email", "offline_access", "Mail.Read"];
+
+fn neon_auth_url(path: &str) -> CommandResult<String> {
+    let base_url = std::env::var("NEON_AUTH_BASE_URL")
+        .map_err(|_| AppError::MissingEnv("NEON_AUTH_BASE_URL".to_string()))?;
+    Ok(format!(
+        "{}/{}",
+        base_url.trim_end_matches('/'),
+        path.trim_start_matches('/')
+    ))
+}
+
+fn auth_error_message(status: StatusCode, body: &str) -> String {
+    let fallback = format!("Neon Auth request failed with HTTP {status}");
+    let Ok(value) = serde_json::from_str::<Value>(body) else {
+        return if body.trim().is_empty() {
+            fallback
+        } else {
+            format!("{fallback}: {}", body.trim())
+        };
+    };
+
+    value
+        .pointer("/error/message")
+        .or_else(|| value.pointer("/message"))
+        .or_else(|| value.pointer("/error"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or(fallback)
+}
+
+fn post_neon_auth(path: &str, body: Value) -> CommandResult<Value> {
+    let url = neon_auth_url(path)?;
+    let response = Client::new()
+        .post(url)
+        .json(&body)
+        .send()
+        .map_err(|error| AppError::Network(error.to_string()))?;
+
+    let status = response.status();
+    let response_text = response
+        .text()
+        .map_err(|error| AppError::Network(error.to_string()))?;
+
+    if !status.is_success() {
+        return Err(AppError::Auth(auth_error_message(status, &response_text)));
+    }
+
+    if response_text.trim().is_empty() {
+        return Ok(Value::Null);
+    }
+
+    serde_json::from_str(&response_text).map_err(|error| AppError::Auth(error.to_string()))
+}
+
+fn auth_response_user(auth_response: &Value, fallback_email: &str) -> AuthSession {
+    let user = auth_response
+        .pointer("/user")
+        .or_else(|| auth_response.pointer("/data/user"));
+    let email = user
+        .and_then(|value| value.pointer("/email"))
+        .and_then(Value::as_str)
+        .unwrap_or(fallback_email);
+    let user_id = user
+        .and_then(|value| value.pointer("/id"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+    AuthSession {
+        email: email.to_string(),
+        user_id,
+        authenticated: true,
+    }
+}
+
+fn save_auth_session(conn: &Connection, session: &AuthSession) -> CommandResult<()> {
+    let value =
+        serde_json::to_string(session).map_err(|error| AppError::Auth(error.to_string()))?;
+    conn.execute(
+        "INSERT INTO local_settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![AUTH_SESSION_SETTING_KEY, value],
+    )?;
+    Ok(())
+}
 
 fn app_db_path(app: &AppHandle) -> CommandResult<PathBuf> {
     let mut dir = app
@@ -97,7 +185,7 @@ fn init_database(path: PathBuf) -> CommandResult<Connection> {
         );
         "#,
     )?;
-    seed_demo_data(&conn)?;
+    remove_demo_seed_data(&conn)?;
     Ok(conn)
 }
 
@@ -114,6 +202,17 @@ fn mailbox_encryption_key() -> CommandResult<String> {
     }
 }
 
+fn remove_demo_seed_data(conn: &Connection) -> CommandResult<()> {
+    conn.execute(
+        "DELETE FROM accounts
+         WHERE (id = 'acc-gmail' AND email = 'reader@gmail.com')
+            OR (id = 'acc-icloud' AND email = 'reader@icloud.com')",
+        [],
+    )?;
+    Ok(())
+}
+
+#[allow(dead_code)]
 fn seed_demo_data(conn: &Connection) -> CommandResult<()> {
     let count: i64 = conn.query_row("SELECT COUNT(*) FROM accounts", [], |row| row.get(0))?;
     if count > 0 {
@@ -233,7 +332,7 @@ fn seed_demo_data(conn: &Connection) -> CommandResult<()> {
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(dead_code, clippy::too_many_arguments)]
 fn insert_message(
     conn: &Connection,
     id: &str,
@@ -272,6 +371,7 @@ fn insert_message(
     Ok(())
 }
 
+#[allow(dead_code)]
 fn insert_attachment(
     conn: &Connection,
     id: &str,
@@ -288,31 +388,75 @@ fn insert_attachment(
 }
 
 #[tauri::command]
-fn auth_start_magic_link(email: String) -> CommandResult<AuthStartResult> {
+fn auth_send_email_otp(email: String) -> CommandResult<AuthStartResult> {
     if !email.contains('@') {
         return Err(AppError::InvalidInput(
             "enter a valid email address".to_string(),
         ));
     }
 
-    // Neon Auth configuration lives outside the desktop binary. The desktop app starts the flow
-    // and receives the `shitou://auth/callback` deep link after the user clicks the email link.
+    post_neon_auth(
+        "email-otp/send-verification-otp",
+        json!({ "email": email, "type": "sign-in" }),
+    )?;
     Ok(AuthStartResult { sent: true, email })
 }
 
 #[tauri::command]
-fn auth_complete_callback(url: String) -> CommandResult<AuthSession> {
-    if !url.starts_with("shitou://auth/callback") {
+fn auth_current_session(state: tauri::State<AppState>) -> CommandResult<Option<AuthSession>> {
+    let conn = state.db.lock().expect("database mutex poisoned");
+    let value = conn
+        .query_row(
+            "SELECT value FROM local_settings WHERE key = ?1",
+            params![AUTH_SESSION_SETTING_KEY],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+
+    value
+        .map(|raw| {
+            serde_json::from_str::<AuthSession>(&raw)
+                .map_err(|error| AppError::Auth(error.to_string()))
+        })
+        .transpose()
+}
+
+#[tauri::command]
+fn auth_verify_email_otp(
+    state: tauri::State<AppState>,
+    email: String,
+    otp: String,
+) -> CommandResult<AuthSession> {
+    if !email.contains('@') {
         return Err(AppError::InvalidInput(
-            "unexpected auth callback URL".to_string(),
+            "enter a valid email address".to_string(),
         ));
     }
 
-    Ok(AuthSession {
-        email: "reader@example.com".to_string(),
-        user_id: Uuid::new_v4().to_string(),
-        authenticated: true,
-    })
+    if otp.trim().len() < 6 {
+        return Err(AppError::InvalidInput(
+            "enter the 6-digit verification code".to_string(),
+        ));
+    }
+
+    let auth_response = post_neon_auth(
+        "sign-in/email-otp",
+        json!({ "email": email, "otp": otp.trim() }),
+    )?;
+    let session = auth_response_user(&auth_response, &email);
+    let conn = state.db.lock().expect("database mutex poisoned");
+    save_auth_session(&conn, &session)?;
+    Ok(session)
+}
+
+#[tauri::command]
+fn auth_logout(state: tauri::State<AppState>) -> CommandResult<Removed> {
+    let conn = state.db.lock().expect("database mutex poisoned");
+    conn.execute(
+        "DELETE FROM local_settings WHERE key = ?1",
+        params![AUTH_SESSION_SETTING_KEY],
+    )?;
+    Ok(Removed { removed: true })
 }
 
 #[tauri::command]
@@ -814,8 +958,10 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            auth_start_magic_link,
-            auth_complete_callback,
+            auth_send_email_otp,
+            auth_current_session,
+            auth_verify_email_otp,
+            auth_logout,
             account_connect_provider,
             account_connect_icloud,
             account_remove,

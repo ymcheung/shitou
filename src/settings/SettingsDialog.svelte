@@ -38,12 +38,12 @@
     isDemoMode: boolean;
     accountColor: (accountId: string) => string;
     onChangeTheme: (theme: ThemeMode) => void | Promise<void>;
-    onLogout: () => void;
+    onLogout: () => void | Promise<void>;
     onConnectProvider: (provider: Exclude<Provider, 'icloud'>) => void | Promise<void>;
     onConnectIcloud: () => void | Promise<void>;
     onRemoveAccount: (accountId: string) => void | Promise<void>;
     onUpdateAccountColor: (accountId: string, color: string) => void;
-    onDeleteUserAccount: () => void;
+    onDeleteUserAccount: () => void | Promise<void>;
   } = $props();
 </script>
 
