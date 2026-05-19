@@ -43,6 +43,18 @@ OUTLOOK_OAUTH_CLIENT_ID=...
 
 Neon Auth configuration should be completed in Neon so the only enabled application auth method is email magic link, with the desktop callback URL set to `shitou://auth/callback`.
 
+## Real Neon Registration
+
+To use Neon for real registration instead of the local demo stub:
+
+1. Create or open the Neon project that owns the app database.
+2. Enable Neon Auth for the project and disable every sign-in method except email magic link.
+3. Add `shitou://auth/callback` as the allowed application callback URL.
+4. Add the Neon Auth project URL and publishable/client key to the desktop runtime environment.
+5. Replace the current Tauri `auth_start_magic_link` stub with a call to Neon Auth's magic-link endpoint.
+6. Replace `auth_complete_callback` with the real callback exchange and persist the returned user id and email in the local session state.
+7. Keep mailbox bodies and attachments in local encrypted storage only; Neon should store account identity/session metadata, not mail content.
+
 ## Verification
 
 Current verified checks in this environment:

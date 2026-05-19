@@ -7,24 +7,6 @@ export default {
   darkMode: 'class',
   theme: {
     extend: {
-      colors: {
-        ink: {
-          50: '#f8fafc',
-          100: '#eef2f7',
-          200: '#d9e2ec',
-          300: '#bcccdc',
-          400: '#829ab1',
-          500: '#627d98',
-          600: '#486581',
-          700: '#334e68',
-          800: '#243b53',
-          900: '#102a43'
-        },
-        signal: {
-          500: '#2563eb',
-          600: '#1d4ed8'
-        }
-      },
       fontFamily: {
         sans: [
           '-apple-system',
@@ -36,7 +18,8 @@ export default {
         ]
       },
       boxShadow: {
-        soft: '0 12px 36px rgba(15, 23, 42, 0.12)'
+        soft: '0 18px 45px rgba(24, 24, 27, 0.12)',
+        panel: '0 1px 2px rgba(24, 24, 27, 0.08), 0 20px 50px rgba(24, 24, 27, 0.08)'
       }
     }
   },

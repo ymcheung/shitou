@@ -17,6 +17,8 @@
     icloudPassword = $bindable(''),
     theme,
     accounts,
+    canAddAccounts = true,
+    isDemoMode = false,
     accountColor,
     onChangeTheme,
     onLogout,
@@ -32,6 +34,8 @@
     icloudPassword: string;
     theme: ThemeMode;
     accounts: MailAccount[];
+    canAddAccounts: boolean;
+    isDemoMode: boolean;
     accountColor: (accountId: string) => string;
     onChangeTheme: (theme: ThemeMode) => void | Promise<void>;
     onLogout: () => void;
@@ -45,26 +49,26 @@
 
 {#if open}
   <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-sm"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 p-3 backdrop-blur-sm sm:p-4"
     role="presentation"
     onclick={(event) => {
       if (event.target === event.currentTarget) open = false;
     }}
   >
     <div
-      class="flex max-h-[88vh] w-full max-w-4xl overflow-hidden rounded-lg border border-ink-200 bg-white shadow-soft dark:border-slate-800 dark:bg-slate-900"
+      class="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 shadow-panel sm:flex-row dark:border-zinc-800 dark:bg-zinc-900"
       role="dialog"
       aria-modal="true"
       aria-labelledby="settings-title"
     >
-      <div class="w-56 shrink-0 border-r border-ink-200 bg-ink-50 p-3 dark:border-slate-800 dark:bg-slate-950">
-        <div class="mb-3 flex items-center justify-between px-2">
+      <div class="shrink-0 border-b border-zinc-200 bg-zinc-50 p-3 sm:w-56 sm:border-b-0 sm:border-r dark:border-zinc-800 dark:bg-zinc-950">
+        <div class="mb-3 flex items-center justify-between px-1">
           <div>
-            <h2 id="settings-title" class="text-sm font-semibold">Settings</h2>
-            <p class="mt-0.5 text-xs text-ink-500 dark:text-slate-400">Mail preferences</p>
+            <h2 id="settings-title" class="text-sm font-semibold text-zinc-950 dark:text-white">Settings</h2>
+            <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Mail preferences</p>
           </div>
           <button
-            class="grid size-8 cursor-pointer place-items-center rounded-md text-ink-500 transition-colors duration-200 hover:bg-ink-100 hover:text-ink-950 focus:outline-none focus:ring-2 focus:ring-signal-500 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+            class="grid size-8 cursor-pointer place-items-center rounded-md text-zinc-500 transition-colors duration-200 hover:bg-zinc-100 hover:text-zinc-950 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-zinc-50 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white dark:focus:ring-offset-zinc-950"
             type="button"
             aria-label="Close settings"
             onclick={() => (open = false)}
@@ -73,15 +77,15 @@
           </button>
         </div>
 
-        <div class="space-y-1" role="tablist" aria-label="Settings tabs">
+        <div class="flex gap-1 overflow-x-auto sm:block sm:space-y-1 sm:overflow-visible" role="tablist" aria-label="Settings tabs">
           {#each tabs as settingsTab (settingsTab.id)}
             {@const TabIcon = settingsTab.icon}
             <button
               class={[
-                'flex h-10 w-full cursor-pointer items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-signal-500',
+                'flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-zinc-50 sm:w-full dark:focus:ring-offset-zinc-950',
                 tab === settingsTab.id
-                  ? 'bg-signal-600 text-white'
-                  : 'text-ink-600 hover:bg-white hover:text-ink-950 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900 dark:hover:text-white'
               ]}
               type="button"
               role="tab"
@@ -95,24 +99,27 @@
         </div>
       </div>
 
-      <div class="mail-scrollbar min-w-0 flex-1 overflow-y-auto p-6">
+      <div class="mail-scrollbar min-w-0 flex-1 overflow-y-auto bg-zinc-50 p-4 sm:p-6 dark:bg-zinc-900">
         {#if tab === 'general'}
-          <section class="space-y-6">
-            <div>
-              <h3 class="text-lg font-semibold">General</h3>
-              <p class="mt-1 text-sm text-ink-500 dark:text-slate-400">Set the app appearance and session state.</p>
+          <section class="space-y-5">
+            <div class="border-b border-zinc-200 pb-4 dark:border-zinc-800">
+              <h3 class="text-lg font-semibold text-zinc-950 dark:text-white">General</h3>
+              <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Set the app appearance and session state.</p>
             </div>
 
-            <div>
-              <div class="mb-2 text-sm font-semibold">Appearance</div>
-              <div class="grid grid-cols-3 gap-2 rounded-lg border border-ink-200 bg-ink-50 p-1 dark:border-slate-800 dark:bg-slate-950">
+            <div class="grid gap-3 sm:grid-cols-[11rem_1fr] sm:items-start">
+              <div>
+                <div class="text-sm font-semibold text-zinc-950 dark:text-white">Appearance</div>
+                <p class="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">Choose the window color mode.</p>
+              </div>
+              <div class="grid grid-cols-3 gap-1 rounded-lg border border-zinc-200 bg-zinc-50 p-1 dark:border-zinc-800 dark:bg-zinc-950">
                 {#each themeOptions as option (option.value)}
                   <button
                     class={[
-                      'inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md text-sm font-semibold transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-signal-500',
+                      'inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md text-sm font-semibold transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-zinc-50 dark:focus:ring-offset-zinc-950',
                       theme === option.value
-                        ? 'bg-white text-ink-950 shadow-sm dark:bg-slate-800 dark:text-white'
-                        : 'text-ink-600 hover:bg-white/70 dark:text-slate-300 dark:hover:bg-slate-900'
+                        ? 'bg-zinc-50 text-zinc-950 shadow-sm dark:bg-zinc-800 dark:text-white'
+                        : 'text-zinc-600 hover:bg-zinc-100/70 dark:text-zinc-300 dark:hover:bg-zinc-900'
                     ]}
                     type="button"
                     onclick={() => void onChangeTheme(option.value)}
@@ -124,14 +131,18 @@
               </div>
             </div>
 
-            <div class="rounded-lg border border-ink-200 p-4 dark:border-slate-800">
-              <div class="flex items-center justify-between gap-4">
+            <div class="grid gap-3 border-t border-zinc-200 pt-5 sm:grid-cols-[11rem_1fr] sm:items-center dark:border-zinc-800">
+              <div>
+                <div class="text-sm font-semibold text-zinc-950 dark:text-white">Session</div>
+                <p class="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">Current local mail session.</p>
+              </div>
+              <div class="flex items-center justify-between gap-4 rounded-lg border border-zinc-200 bg-zinc-50/60 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-950/60">
                 <div>
-                  <div class="text-sm font-semibold">Session</div>
-                  <p class="mt-1 text-sm text-ink-500 dark:text-slate-400">Log out of the current local mail session.</p>
+                  <div class="text-sm font-medium text-zinc-800 dark:text-zinc-200">Signed in</div>
+                  <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Log out from this device.</p>
                 </div>
                 <button
-                  class="inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border border-ink-200 bg-white px-3 text-sm font-semibold text-ink-700 transition-colors duration-200 hover:bg-ink-50 focus:outline-none focus:ring-2 focus:ring-signal-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800"
+                  class="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 text-sm font-semibold text-zinc-700 transition-colors duration-200 hover:border-zinc-300 hover:bg-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:focus:ring-offset-zinc-950"
                   type="button"
                   onclick={onLogout}
                 >
@@ -141,82 +152,93 @@
             </div>
           </section>
         {:else if tab === 'accounts'}
-          <section class="space-y-6">
-            <div>
-              <h3 class="text-lg font-semibold">Accounts</h3>
-              <p class="mt-1 text-sm text-ink-500 dark:text-slate-400">Add mailboxes, remove mailboxes, and tune account colors.</p>
+          <section class="space-y-5">
+            <div class="border-b border-zinc-200 pb-4 dark:border-zinc-800">
+              <h3 class="text-lg font-semibold text-zinc-950 dark:text-white">Accounts</h3>
+              <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Add mailboxes, remove mailboxes, and tune account colors.</p>
             </div>
 
-            <div class="rounded-lg border border-ink-200 bg-ink-50 p-4 dark:border-slate-800 dark:bg-slate-950">
-              <div class="text-sm font-semibold">Add account</div>
-              <div class="mt-3 grid gap-2 sm:grid-cols-2">
-                <button
-                  class="h-10 cursor-pointer rounded-md border border-ink-200 bg-white px-3 text-sm font-semibold text-ink-700 transition-colors duration-200 hover:bg-ink-50 focus:outline-none focus:ring-2 focus:ring-signal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                  type="button"
-                  onclick={() => void onConnectProvider('gmail')}>Gmail</button
-                >
-                <button
-                  class="h-10 cursor-pointer rounded-md border border-ink-200 bg-white px-3 text-sm font-semibold text-ink-700 transition-colors duration-200 hover:bg-ink-50 focus:outline-none focus:ring-2 focus:ring-signal-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                  type="button"
-                  onclick={() => void onConnectProvider('outlook')}>Outlook</button
-                >
+            <div class="grid gap-3 sm:grid-cols-[11rem_1fr] sm:items-start">
+              <div>
+                <div class="text-sm font-semibold text-zinc-950 dark:text-white">Add account</div>
+                <p class="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">Connect a mailbox provider.</p>
               </div>
-              <div class="mt-3 grid gap-2 md:grid-cols-[1fr_1fr_auto]">
-                <label class="sr-only" for="settings-icloud-email">iCloud email</label>
-                <input
-                  id="settings-icloud-email"
-                  class="h-10 rounded-md border-ink-200 text-sm focus:border-signal-500 focus:ring-signal-500 dark:border-slate-700 dark:bg-slate-900"
-                  type="email"
-                  placeholder="name@icloud.com"
-                  bind:value={icloudEmail}
-                />
-                <label class="sr-only" for="settings-icloud-password">iCloud app-specific password</label>
-                <input
-                  id="settings-icloud-password"
-                  class="h-10 rounded-md border-ink-200 text-sm focus:border-signal-500 focus:ring-signal-500 dark:border-slate-700 dark:bg-slate-900"
-                  type="password"
-                  placeholder="App-specific password"
-                  bind:value={icloudPassword}
-                />
-                <button
-                  class="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md bg-ink-900 px-3 text-sm font-semibold text-white transition-colors duration-200 hover:bg-ink-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-950"
-                  type="button"
-                  disabled={!icloudEmail || !icloudPassword}
-                  onclick={() => void onConnectIcloud()}
-                >
-                  <Apple size={16} /> Connect
-                </button>
-              </div>
+              {#if isDemoMode || !canAddAccounts}
+                <p class="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">
+                  Adding accounts is unavailable while using fake demo data.
+                </p>
+              {:else}
+                <div class="space-y-2">
+                  <div class="grid gap-2 sm:grid-cols-2">
+                    <button
+                      class="h-9 cursor-pointer rounded-md border border-zinc-200 bg-zinc-50 px-3 text-sm font-semibold text-zinc-700 transition-colors duration-200 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:hover:text-white dark:focus:ring-offset-zinc-900"
+                      type="button"
+                      onclick={() => void onConnectProvider('gmail')}>Gmail</button
+                    >
+                    <button
+                      class="h-9 cursor-pointer rounded-md border border-zinc-200 bg-zinc-50 px-3 text-sm font-semibold text-zinc-700 transition-colors duration-200 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:hover:text-white dark:focus:ring-offset-zinc-900"
+                      type="button"
+                      onclick={() => void onConnectProvider('outlook')}>Outlook</button
+                    >
+                  </div>
+                  <div class="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                    <label class="sr-only" for="settings-icloud-email">iCloud email</label>
+                    <input
+                      id="settings-icloud-email"
+                      class="h-9 rounded-md border-zinc-200 bg-zinc-50 text-sm text-zinc-950 placeholder:text-zinc-400 focus:border-indigo-500 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500"
+                      type="email"
+                      placeholder="name@icloud.com"
+                      bind:value={icloudEmail}
+                    />
+                    <label class="sr-only" for="settings-icloud-password">iCloud app-specific password</label>
+                    <input
+                      id="settings-icloud-password"
+                      class="h-9 rounded-md border-zinc-200 bg-zinc-50 text-sm text-zinc-950 placeholder:text-zinc-400 focus:border-indigo-500 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500"
+                      type="password"
+                      placeholder="App-specific password"
+                      bind:value={icloudPassword}
+                    />
+                    <button
+                      class="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md bg-indigo-600 px-3 text-sm font-semibold text-white transition-colors duration-200 hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-zinc-900"
+                      type="button"
+                      disabled={!icloudEmail || !icloudPassword}
+                      onclick={() => void onConnectIcloud()}
+                    >
+                      <Apple size={16} /> Connect
+                    </button>
+                  </div>
+                </div>
+              {/if}
             </div>
 
-            <div class="space-y-3">
+            <div class="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
               {#each accounts as account (account.id)}
-                <div class="rounded-lg border border-ink-200 p-4 dark:border-slate-800">
-                  <div class="flex items-start justify-between gap-4">
+                <div class="bg-zinc-50 p-3 first:rounded-t-lg last:rounded-b-lg dark:bg-zinc-900">
+                  <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div class="min-w-0">
                       <div class="flex min-w-0 items-center gap-2">
-                        <span class="size-3 shrink-0 rounded-full" style:background-color={accountColor(account.id)}></span>
-                        <div class="truncate text-sm font-semibold">{account.displayName}</div>
+                        <span class="size-2.5 shrink-0 rounded-full ring-2 ring-zinc-50 dark:ring-zinc-900" style:background-color={accountColor(account.id)}></span>
+                        <div class="truncate text-sm font-semibold text-zinc-950 dark:text-white">{account.displayName}</div>
                       </div>
-                      <div class="mt-1 truncate text-sm text-ink-500 dark:text-slate-400">{account.email}</div>
+                      <div class="mt-1 truncate text-sm text-zinc-500 dark:text-zinc-400">{account.email}</div>
                     </div>
                     <button
-                      class="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-red-200 bg-white px-3 text-sm font-semibold text-red-700 transition-colors duration-200 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 dark:border-red-950 dark:bg-slate-950 dark:text-red-300 dark:hover:bg-red-950/40"
+                      class="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md border border-red-200 bg-zinc-50 px-3 text-sm font-semibold text-red-700 transition-colors duration-200 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-zinc-50 dark:border-red-950 dark:bg-zinc-950 dark:text-red-300 dark:hover:bg-red-950/40 dark:focus:ring-offset-zinc-900"
                       type="button"
                       onclick={() => void onRemoveAccount(account.id)}
                     >
                       <Trash2 size={15} /> Remove
                     </button>
                   </div>
-                  <div class="mt-4 flex flex-wrap items-center gap-2">
-                    <span class="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-slate-400">
+                  <div class="mt-3 flex flex-wrap items-center gap-2">
+                    <span class="inline-flex items-center gap-1 text-xs font-semibold text-zinc-500 dark:text-zinc-400">
                       <Palette size={14} /> Color
                     </span>
                     {#each accountColors as color (color)}
                       <button
                         class={[
-                          'size-7 cursor-pointer rounded-full border-2 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-signal-500',
-                          accountColor(account.id) === color ? 'border-ink-900 dark:border-white' : 'border-transparent hover:border-ink-300 dark:hover:border-slate-600'
+                          'size-6 cursor-pointer rounded-full border-2 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-zinc-50 dark:focus:ring-offset-zinc-900',
+                          accountColor(account.id) === color ? 'border-zinc-900 dark:border-zinc-200' : 'border-zinc-200 hover:border-zinc-300 dark:border-zinc-900 dark:hover:border-zinc-600'
                         ]}
                         style:background-color={color}
                         type="button"
@@ -230,13 +252,13 @@
             </div>
           </section>
         {:else}
-          <section class="space-y-6">
-            <div>
-              <h3 class="text-lg font-semibold">Advanced</h3>
-              <p class="mt-1 text-sm text-ink-500 dark:text-slate-400">Destructive account controls for this device.</p>
+          <section class="space-y-5">
+            <div class="border-b border-zinc-200 pb-4 dark:border-zinc-800">
+              <h3 class="text-lg font-semibold text-zinc-950 dark:text-white">Advanced</h3>
+              <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Destructive account controls for this device.</p>
             </div>
             <div class="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-950 dark:bg-red-950/30">
-              <div class="flex items-start justify-between gap-4">
+              <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div class="flex items-center gap-2 text-sm font-semibold text-red-900 dark:text-red-100">
                     <ShieldAlert size={17} /> Delete account
@@ -246,7 +268,7 @@
                   </p>
                 </div>
                 <button
-                  class="inline-flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-md bg-red-600 px-3 text-sm font-semibold text-white transition-colors duration-200 hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  class="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md bg-red-600 px-3 text-sm font-semibold text-white transition-colors duration-200 hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-red-50 dark:focus:ring-offset-red-950"
                   type="button"
                   onclick={onDeleteUserAccount}
                 >

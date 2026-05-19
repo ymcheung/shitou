@@ -1,1 +1,1 @@
-export { api } from '../tauri/client';
+export { api, demoApi } from '../tauri/client';

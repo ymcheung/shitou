@@ -7,7 +7,7 @@
   import { accountColor as resolveAccountColor, accountLabel as resolveAccountLabel } from "../accounts/account-colors";
   import { providerLabels } from "../accounts/provider";
   import { applyTheme } from "../app/theme";
-  import { api } from "$lib/tauri";
+  import { api, demoApi } from "$lib/tauri";
   import {
     buildRootFolders,
     isPermanentDeleteFolder as folderAllowsPermanentDelete,
@@ -27,6 +27,7 @@
     MessageSummary,
     Provider,
     ThemeMode,
+    AuthSession,
   } from "$lib/types";
 
   let email = $state("");
@@ -34,6 +35,8 @@
   let authBusy = $state(false);
   let authError = $state("");
   let isSignedIn = $state(false);
+  let isDemoMode = $state(false);
+  let session = $state.raw<AuthSession | null>(null);
 
   let accounts = $state.raw<MailAccount[]>([]);
   let folders = $state.raw<Folder[]>([]);
@@ -88,6 +91,7 @@
   let mailGridColumns = $derived(
     `${accountPanelWidth}px ${panelHandleWidth}px ${messageListWidth}px ${panelHandleWidth}px minmax(${minMessagePanelWidth}px, 1fr)`,
   );
+  let mailApi = $derived(isDemoMode ? demoApi : api);
 
   $effect(() => {
     applyTheme(theme);
@@ -128,12 +132,13 @@
     }
   }
 
-  async function completeDemoSignIn() {
+  async function completeMagicLinkSignIn() {
     authBusy = true;
     authError = "";
 
     try {
-      await api.authCompleteCallback("shitou://auth/callback?token=demo");
+      session = await api.authCompleteCallback("shitou://auth/callback?token=magic-link");
+      isDemoMode = false;
       isSignedIn = true;
       await loadMailbox();
     } catch (error) {
@@ -144,12 +149,30 @@
     }
   }
 
+  async function startDemoMode() {
+    authBusy = true;
+    authError = "";
+
+    try {
+      session = await demoApi.authCompleteDemo();
+      isDemoMode = true;
+      isSignedIn = true;
+      accountPanelOpen = false;
+      await loadMailbox();
+    } catch (error) {
+      authError =
+        error instanceof Error ? error.message : "Unable to start demo mode.";
+    } finally {
+      authBusy = false;
+    }
+  }
+
   async function loadMailbox() {
     appBusy = true;
     appError = "";
 
     try {
-      accounts = await api.listAccounts();
+      accounts = await mailApi.listAccounts();
       foldersByAccount = await loadFoldersByAccount(accounts);
       folders = selectedAccountId
         ? (foldersByAccount[selectedAccountId] ?? [])
@@ -175,7 +198,7 @@
     const entries = await Promise.all(
       nextAccounts.map(
         async (account) =>
-          [account.id, await api.listFolders(account.id)] as const,
+          [account.id, await mailApi.listFolders(account.id)] as const,
       ),
     );
     return Object.fromEntries(entries);
@@ -196,7 +219,7 @@
 
   async function loadFolders(accountId: string) {
     selectedAccountId = accountId;
-    folders = foldersByAccount[accountId] ?? (await api.listFolders(accountId));
+    folders = foldersByAccount[accountId] ?? (await mailApi.listFolders(accountId));
     foldersByAccount = { ...foldersByAccount, [accountId]: folders };
     selectedFolderId = folders[0]?.id || "";
     selectedMessage = null;
@@ -205,30 +228,30 @@
 
   async function loadMessages(folderId: string) {
     selectedFolderId = folderId;
-    messages = await api.listMessages(folderId, query);
+    messages = await mailApi.listMessages(folderId, query);
     selectedMessageIds = [];
     selectionMode = false;
-    selectedMessage = messages[0] ? await api.getMessage(messages[0].id) : null;
+    selectedMessage = messages[0] ? await mailApi.getMessage(messages[0].id) : null;
   }
 
   async function searchMessages() {
     if (!selectedFolderId) return;
-    messages = await api.listMessages(selectedFolderId, query);
+    messages = await mailApi.listMessages(selectedFolderId, query);
     selectedMessageIds = [];
     selectionMode = false;
-    selectedMessage = messages[0] ? await api.getMessage(messages[0].id) : null;
+    selectedMessage = messages[0] ? await mailApi.getMessage(messages[0].id) : null;
   }
 
   async function openMessage(messageId: string) {
     const message = messages.find((item) => item.id === messageId);
     if (message?.isUnread) {
-      await api.markMessagesRead([messageId]);
+      await mailApi.markMessagesRead([messageId]);
       messages = messages.map((item) =>
         item.id === messageId ? { ...item, isUnread: false } : item,
       );
       await refreshFolders();
     }
-    const detail = await api.getMessage(messageId);
+    const detail = await mailApi.getMessage(messageId);
     selectedMessage = { ...detail, isUnread: false };
   }
 
@@ -248,7 +271,7 @@
 
   async function markSelectedRead() {
     if (selectedMessageIds.length === 0) return;
-    await api.markMessagesRead(selectedMessageIds);
+    await mailApi.markMessagesRead(selectedMessageIds);
     messages = messages.map((message) =>
       selectedMessageIdSet.has(message.id)
         ? { ...message, isUnread: false }
@@ -269,7 +292,7 @@
     ) {
       return;
     }
-    await api.deleteMessages(selectedMessageIds);
+    await mailApi.deleteMessages(selectedMessageIds);
     selectedMessageIds = [];
     await refreshFolders();
     if (selectedFolderId) await loadMessages(selectedFolderId);
@@ -280,7 +303,7 @@
     appError = "";
 
     try {
-      accounts = await api.syncAll();
+      accounts = await mailApi.syncAll();
       await refreshFolders();
       if (selectedFolderId) await loadMessages(selectedFolderId);
     } catch (error) {
@@ -291,11 +314,16 @@
   }
 
   async function connectProvider(provider: Exclude<Provider, "icloud">) {
+    if (isDemoMode) {
+      appError = "Adding accounts is unavailable in demo mode.";
+      return;
+    }
+
     appBusy = true;
     appError = "";
 
     try {
-      await api.connectProvider(provider);
+      await mailApi.connectProvider(provider);
       accountPanelOpen = false;
     } catch (error) {
       appError =
@@ -308,11 +336,16 @@
   }
 
   async function connectIcloud() {
+    if (isDemoMode) {
+      appError = "Adding accounts is unavailable in demo mode.";
+      return;
+    }
+
     appBusy = true;
     appError = "";
 
     try {
-      const account = await api.connectIcloud(icloudEmail, icloudPassword);
+      const account = await mailApi.connectIcloud(icloudEmail, icloudPassword);
       accounts = [...accounts, account];
       foldersByAccount = { ...foldersByAccount, [account.id]: [] };
       icloudEmail = "";
@@ -332,7 +365,7 @@
     if (!window.confirm("Remove this mail account from Shitou Mail?")) {
       return;
     }
-    await api.removeAccount(accountId);
+    await mailApi.removeAccount(accountId);
     accounts = accounts.filter((account) => account.id !== accountId);
     const { [accountId]: _removed, ...remainingColors } = accountColorOverrides;
     accountColorOverrides = remainingColors;
@@ -360,6 +393,8 @@
   function logout() {
     if (!window.confirm("Log out of Shitou Mail?")) return;
     isSignedIn = false;
+    isDemoMode = false;
+    session = null;
     selectedMessage = null;
     selectedMessageIds = [];
     selectionMode = false;
@@ -389,6 +424,8 @@
     accountColorOverrides = {};
     settingsOpen = false;
     isSignedIn = false;
+    isDemoMode = false;
+    session = null;
   }
 
   function accountColor(accountId: string) {
@@ -486,21 +523,19 @@
     busy={authBusy}
     error={authError}
     onSendMagicLink={sendMagicLink}
-    onCompleteDemoSignIn={completeDemoSignIn}
+    onCompleteMagicLink={completeMagicLinkSignIn}
+    onStartDemo={startDemoMode}
   />
 {:else}
   <main
     bind:this={mailShell}
     class={[
-      "grid h-screen bg-ink-50 text-ink-900 dark:bg-slate-950 dark:text-slate-100",
+      "grid h-screen bg-transparent text-zinc-900 dark:text-zinc-100",
       activeResize ? "cursor-col-resize select-none" : "",
     ]}
     style:grid-template-columns={mailGridColumns}
   >
     <AccountSidebar
-      bind:accountPanelOpen
-      bind:icloudEmail
-      bind:icloudPassword
       unreadTotal={unreadTotal}
       offlineAccounts={offlineAccounts}
       appError={appError}
@@ -511,8 +546,6 @@
       selectedFolderId={selectedFolderId}
       selectedAccountId={selectedAccountId}
       {accountColor}
-      onConnectProvider={connectProvider}
-      onConnectIcloud={connectIcloud}
       onLoadRootFolder={loadRootFolder}
       onLoadFolders={loadFolders}
       onLoadMessages={loadMessages}
@@ -522,14 +555,14 @@
     />
 
     <button
-      class="group relative cursor-col-resize border-r border-ink-200 bg-ink-100/70 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-signal-500 dark:border-slate-800 dark:bg-slate-900"
+      class="group relative cursor-col-resize border-r border-zinc-200/80 bg-zinc-50/35 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:border-zinc-800/80 dark:bg-zinc-950/50"
       type="button"
       aria-label="Resize accounts panel. Drag or use left and right arrow keys."
       onpointerdown={(event) => startPanelResize("accounts", event)}
       onkeydown={(event) => handlePanelResizeKey("accounts", event)}
     >
       <span
-        class="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 rounded-full bg-transparent transition-colors group-hover:bg-signal-500/70 group-focus:bg-signal-500/70"
+        class="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 rounded-full bg-transparent transition-colors group-hover:bg-indigo-500/70 group-focus:bg-indigo-500/70"
       ></span>
     </button>
 
@@ -556,14 +589,14 @@
     />
 
     <button
-      class="group relative cursor-col-resize border-r border-ink-200 bg-ink-100/70 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-signal-500 dark:border-slate-800 dark:bg-slate-900"
+      class="group relative cursor-col-resize border-r border-zinc-200/80 bg-zinc-50/35 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:border-zinc-800/80 dark:bg-zinc-950/50"
       type="button"
       aria-label="Resize message list panel. Drag or use left and right arrow keys."
       onpointerdown={(event) => startPanelResize("message", event)}
       onkeydown={(event) => handlePanelResizeKey("message", event)}
     >
       <span
-        class="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 rounded-full bg-transparent transition-colors group-hover:bg-signal-500/70 group-focus:bg-signal-500/70"
+        class="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 rounded-full bg-transparent transition-colors group-hover:bg-indigo-500/70 group-focus:bg-indigo-500/70"
       ></span>
     </button>
 
@@ -576,6 +609,8 @@
       bind:icloudPassword
       {theme}
       {accounts}
+      canAddAccounts={!isDemoMode}
+      {isDemoMode}
       {accountColor}
       onChangeTheme={changeTheme}
       onLogout={logout}

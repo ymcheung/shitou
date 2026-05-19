@@ -36,3 +36,27 @@ export const api = {
     call<{ count: number }>('delete_messages', { message_ids: messageIds }, demoMailbox.deleteMessages(messageIds)),
   setTheme: (mode: ThemeMode) => call<{ mode: ThemeMode }>('set_theme', { mode }, { mode })
 };
+
+export const demoApi = {
+  authCompleteDemo: async (): Promise<AuthSession> => ({
+    authenticated: true,
+    email: 'demo.reader@shitou.local',
+    userId: 'demo-user'
+  }),
+  connectProvider: async (_provider: Exclude<Provider, 'icloud'>) => {
+    throw new Error('Adding accounts is unavailable in demo mode.');
+  },
+  connectIcloud: async (_email: string, _appPassword: string) => {
+    throw new Error('Adding accounts is unavailable in demo mode.');
+  },
+  removeAccount: async (_accountId: string) => ({ removed: true }),
+  syncAccount: async (accountId: string) => demoAccounts.find((account) => account.id === accountId) ?? demoAccounts[0],
+  syncAll: async () => demoAccounts,
+  listAccounts: async () => demoAccounts,
+  listFolders: async (accountId: string) => demoMailbox.listFolders(accountId),
+  listMessages: async (folderId: string, query = '') => demoMailbox.listMessages(folderId, query),
+  getMessage: async (messageId: string) => demoMailbox.getMessage(messageId),
+  markMessagesRead: async (messageIds: string[]) => demoMailbox.markMessagesRead(messageIds),
+  deleteMessages: async (messageIds: string[]) => demoMailbox.deleteMessages(messageIds),
+  setTheme: (mode: ThemeMode) => api.setTheme(mode)
+};
