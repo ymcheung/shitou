@@ -44,9 +44,9 @@ let demoMessages: MessageDetail[] = [
     hasAttachments: false,
     isUnread: true,
     bodyText:
-      'Magic link sign-in is configured for the desktop client. Password, social, calendar, reminder, contact, and notification features stay out of scope.',
+      'Magic link sign-in is configured for the desktop client. Password, social, calendar, reminder, contact, and notification features stay out of scope.\n\nPriya Shah\nProduct Security\nNeon Auth',
     bodyHtml:
-      '<p>Magic link sign-in is configured for the desktop client.</p><p>Password, social, calendar, reminder, contact, and notification features stay out of scope.</p>',
+      '<p>Magic link sign-in is configured for the desktop client.</p><p>Password, social, calendar, reminder, contact, and notification features stay out of scope.</p><div class="signature"><p>Priya Shah<br>Product Security<br>Neon Auth</p></div>',
     attachments: []
   },
   {
@@ -79,9 +79,10 @@ let demoMessages: MessageDetail[] = [
     receivedAt: new Date(Date.now() - 1000 * 60 * 130).toISOString(),
     hasAttachments: false,
     isUnread: true,
-    bodyText: 'iCloud Mail uses imap.mail.me.com on port 993 with TLS. SMTP is not configured in this read-only release.',
+    bodyText:
+      'iCloud Mail uses imap.mail.me.com on port 993 with TLS. SMTP is not configured in this read-only release.\n\nMina Park\nMailbox Operations\niCloud Mail',
     bodyHtml:
-      '<p>iCloud Mail uses <code>imap.mail.me.com:993</code> with TLS.</p><p>SMTP is not configured in this read-only release.</p>',
+      '<p>iCloud Mail uses <code>imap.mail.me.com:993</code> with TLS.</p><p>SMTP is not configured in this read-only release.</p><div class="signature"><p>Mina Park<br>Mailbox Operations<br>iCloud Mail</p></div>',
     attachments: []
   },
   {
@@ -98,6 +99,45 @@ let demoMessages: MessageDetail[] = [
     isUnread: true,
     bodyText: 'This demo message appears in the aggregate spam folder.',
     bodyHtml: '<p>This demo message appears in the aggregate spam folder.</p>',
+    attachments: []
+  },
+  {
+    id: 'msg-5',
+    folderId: 'inbox',
+    accountId: 'acc-gmail',
+    providerMessageId: 'gmail:msg-5',
+    sender: 'Design Review',
+    recipients: ['reader@gmail.com'],
+    subject: 'Signature samples attached',
+    preview: 'Attached are the signature samples for testing cached attachment metadata.',
+    receivedAt: new Date(Date.now() - 1000 * 60 * 240).toISOString(),
+    hasAttachments: true,
+    isUnread: false,
+    bodyText:
+      'Attached are two signature samples for the demo mailbox. The HTML version uses a normal text signature so we can compare it with image-heavy signatures separately.\n\nJordan Lee\nDesign Systems\nShitou Mail',
+    bodyHtml:
+      '<p>Attached are two signature samples for the demo mailbox.</p><p>The HTML version uses a normal text signature so we can compare it with image-heavy signatures separately.</p><div class="signature"><p>Jordan Lee<br>Design Systems<br>Shitou Mail</p></div>',
+    attachments: [
+      { id: 'att-2', fileName: 'signature-samples.pdf', mimeType: 'application/pdf', byteSize: 482176 },
+      { id: 'att-3', fileName: 'brand-footer.png', mimeType: 'image/png', byteSize: 128904 }
+    ]
+  },
+  {
+    id: 'msg-6',
+    folderId: 'icloud-inbox',
+    accountId: 'acc-icloud',
+    providerMessageId: 'imap:uid-302',
+    sender: 'Northstar Labs',
+    recipients: ['reader@icloud.com'],
+    subject: 'Logo signature rendering check',
+    preview: 'This message includes images inside the signature block.',
+    receivedAt: new Date(Date.now() - 1000 * 60 * 310).toISOString(),
+    hasAttachments: false,
+    isUnread: false,
+    bodyText:
+      'Please confirm the reader keeps inline signature images visible in the offline body cache.\n\nAvery Chen\nNorthstar Labs',
+    bodyHtml:
+      '<p>Please confirm the reader keeps inline signature images visible in the offline body cache.</p><div class="signature"><p><img alt="Northstar Labs mark" width="36" height="36" src="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2236%22%20height=%2236%22%20viewBox=%220%200%2036%2036%22%3E%3Crect%20width=%2236%22%20height=%2236%22%20rx=%228%22%20fill=%22%2318181b%22/%3E%3Cpath%20d=%22M18%206l3.2%208.8L30%2018l-8.8%203.2L18%2030l-3.2-8.8L6%2018l8.8-3.2L18%206z%22%20fill=%22%23facc15%22/%3E%3C/svg%3E"></p><p>Avery Chen<br>Northstar Labs</p><p><img alt="Certified offline badge" width="96" height="24" src="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2296%22%20height=%2224%22%20viewBox=%220%200%2096%2024%22%3E%3Crect%20width=%2296%22%20height=%2224%22%20rx=%2212%22%20fill=%22%23ecfeff%22/%3E%3Ctext%20x=%2212%22%20y=%2216%22%20font-family=%22Arial%22%20font-size=%2210%22%20font-weight=%22700%22%20fill=%22%230e7490%22%3EOFFLINE%20READY%3C/text%3E%3C/svg%3E"></p></div>',
     attachments: []
   }
 ];

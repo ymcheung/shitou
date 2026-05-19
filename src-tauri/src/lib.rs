@@ -151,8 +151,8 @@ fn seed_demo_data(conn: &Connection) -> CommandResult<()> {
         "This account uses gmail.readonly and stores offline bodies locally on this Mac.",
         true,
         false,
-        "<p>This account uses <code>gmail.readonly</code> and stores offline bodies locally on this Mac.</p>",
-        "This account uses gmail.readonly and stores offline bodies locally on this Mac.",
+        "<p>This account uses <code>gmail.readonly</code> and stores offline bodies locally on this Mac.</p><div class=\"signature\"><p>Alex Morgan<br>Platform Integrations<br>Gmail API</p></div>",
+        "This account uses gmail.readonly and stores offline bodies locally on this Mac.\n\nAlex Morgan\nPlatform Integrations\nGmail API",
     )?;
     insert_message(
         conn,
@@ -166,8 +166,8 @@ fn seed_demo_data(conn: &Connection) -> CommandResult<()> {
         "iCloud reads over IMAP with an app-specific password stored in Keychain.",
         true,
         false,
-        "<p>iCloud reads over IMAP with an app-specific password stored in Keychain. SMTP is not configured in v1.</p>",
-        "iCloud reads over IMAP with an app-specific password stored in Keychain. SMTP is not configured in v1.",
+        "<p>iCloud reads over IMAP with an app-specific password stored in Keychain. SMTP is not configured in v1.</p><div class=\"signature\"><p>Mina Park<br>Mailbox Operations<br>iCloud Mail</p></div>",
+        "iCloud reads over IMAP with an app-specific password stored in Keychain. SMTP is not configured in v1.\n\nMina Park\nMailbox Operations\niCloud Mail",
     )?;
     insert_message(
         conn,
@@ -183,6 +183,52 @@ fn seed_demo_data(conn: &Connection) -> CommandResult<()> {
         false,
         "<p>This demo message appears in the aggregate spam folder.</p>",
         "This demo message appears in the aggregate spam folder.",
+    )?;
+    insert_message(
+        conn,
+        "msg-4",
+        "inbox",
+        "acc-gmail",
+        "gmail:msg-4",
+        "Design Review",
+        &["reader@gmail.com"],
+        "Signature samples attached",
+        "Attached are the signature samples for testing cached attachment metadata.",
+        false,
+        true,
+        "<p>Attached are two signature samples for the demo mailbox.</p><p>The HTML version uses a normal text signature so we can compare it with image-heavy signatures separately.</p><div class=\"signature\"><p>Jordan Lee<br>Design Systems<br>Shitou Mail</p></div>",
+        "Attached are two signature samples for the demo mailbox. The HTML version uses a normal text signature so we can compare it with image-heavy signatures separately.\n\nJordan Lee\nDesign Systems\nShitou Mail",
+    )?;
+    insert_attachment(
+        conn,
+        "att-2",
+        "msg-4",
+        "signature-samples.pdf",
+        "application/pdf",
+        482_176,
+    )?;
+    insert_attachment(
+        conn,
+        "att-3",
+        "msg-4",
+        "brand-footer.png",
+        "image/png",
+        128_904,
+    )?;
+    insert_message(
+        conn,
+        "msg-5",
+        "icloud-inbox",
+        "acc-icloud",
+        "imap:uid-302",
+        "Northstar Labs",
+        &["reader@icloud.com"],
+        "Logo signature rendering check",
+        "This message includes images inside the signature block.",
+        false,
+        false,
+        "<p>Please confirm the reader keeps inline signature images visible in the offline body cache.</p><div class=\"signature\"><p><img alt=\"Northstar Labs mark\" width=\"36\" height=\"36\" src=\"data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2236%22%20height=%2236%22%20viewBox=%220%200%2036%2036%22%3E%3Crect%20width=%2236%22%20height=%2236%22%20rx=%228%22%20fill=%22%2318181b%22/%3E%3Cpath%20d=%22M18%206l3.2%208.8L30%2018l-8.8%203.2L18%2030l-3.2-8.8L6%2018l8.8-3.2L18%206z%22%20fill=%22%23facc15%22/%3E%3C/svg%3E\"></p><p>Avery Chen<br>Northstar Labs</p><p><img alt=\"Certified offline badge\" width=\"96\" height=\"24\" src=\"data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2296%22%20height=%2224%22%20viewBox=%220%200%2096%2024%22%3E%3Crect%20width=%2296%22%20height=%2224%22%20rx=%2212%22%20fill=%22%23ecfeff%22/%3E%3Ctext%20x=%2212%22%20y=%2216%22%20font-family=%22Arial%22%20font-size=%2210%22%20font-weight=%22700%22%20fill=%22%230e7490%22%3EOFFLINE%20READY%3C/text%3E%3C/svg%3E\"></p></div>",
+        "Please confirm the reader keeps inline signature images visible in the offline body cache.\n\nAvery Chen\nNorthstar Labs",
     )?;
     Ok(())
 }
@@ -222,6 +268,21 @@ fn insert_message(
     conn.execute(
         "INSERT INTO message_bodies (message_id, body_html, body_text) VALUES (?1, ?2, ?3)",
         params![id, body_html, body_text],
+    )?;
+    Ok(())
+}
+
+fn insert_attachment(
+    conn: &Connection,
+    id: &str,
+    message_id: &str,
+    file_name: &str,
+    mime_type: &str,
+    byte_size: i64,
+) -> CommandResult<()> {
+    conn.execute(
+        "INSERT INTO attachments (id, message_id, file_name, mime_type, byte_size) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![id, message_id, file_name, mime_type, byte_size],
     )?;
     Ok(())
 }

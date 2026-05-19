@@ -4,7 +4,11 @@
   import MessageList from "../messages/MessageList.svelte";
   import MessageReader from "../messages/MessageReader.svelte";
   import SettingsDialog from "../settings/SettingsDialog.svelte";
-  import { accountColor as resolveAccountColor, accountLabel as resolveAccountLabel } from "../accounts/account-colors";
+  import { Settings } from "@lucide/svelte";
+  import {
+    accountColor as resolveAccountColor,
+    accountLabel as resolveAccountLabel,
+  } from "../accounts/account-colors";
   import { providerLabels } from "../accounts/provider";
   import { applyTheme } from "../app/theme";
   import { api, demoApi } from "$lib/tauri";
@@ -137,7 +141,9 @@
     authError = "";
 
     try {
-      session = await api.authCompleteCallback("shitou://auth/callback?token=magic-link");
+      session = await api.authCompleteCallback(
+        "shitou://auth/callback?token=magic-link",
+      );
       isDemoMode = false;
       isSignedIn = true;
       await loadMailbox();
@@ -219,7 +225,8 @@
 
   async function loadFolders(accountId: string) {
     selectedAccountId = accountId;
-    folders = foldersByAccount[accountId] ?? (await mailApi.listFolders(accountId));
+    folders =
+      foldersByAccount[accountId] ?? (await mailApi.listFolders(accountId));
     foldersByAccount = { ...foldersByAccount, [accountId]: folders };
     selectedFolderId = folders[0]?.id || "";
     selectedMessage = null;
@@ -231,7 +238,9 @@
     messages = await mailApi.listMessages(folderId, query);
     selectedMessageIds = [];
     selectionMode = false;
-    selectedMessage = messages[0] ? await mailApi.getMessage(messages[0].id) : null;
+    selectedMessage = messages[0]
+      ? await mailApi.getMessage(messages[0].id)
+      : null;
   }
 
   async function searchMessages() {
@@ -239,7 +248,9 @@
     messages = await mailApi.listMessages(selectedFolderId, query);
     selectedMessageIds = [];
     selectionMode = false;
-    selectedMessage = messages[0] ? await mailApi.getMessage(messages[0].id) : null;
+    selectedMessage = messages[0]
+      ? await mailApi.getMessage(messages[0].id)
+      : null;
   }
 
   async function openMessage(messageId: string) {
@@ -519,7 +530,7 @@
 {#if !isSignedIn}
   <AuthScreen
     bind:email
-    magicLinkSent={magicLinkSent}
+    {magicLinkSent}
     busy={authBusy}
     error={authError}
     onSendMagicLink={sendMagicLink}
@@ -528,79 +539,91 @@
   />
 {:else}
   <main
-    bind:this={mailShell}
     class={[
-      "grid h-screen bg-transparent text-zinc-900 dark:text-zinc-100",
+      "relative h-screen overflow-hidden bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100",
       activeResize ? "cursor-col-resize select-none" : "",
     ]}
-    style:grid-template-columns={mailGridColumns}
   >
-    <AccountSidebar
-      unreadTotal={unreadTotal}
-      offlineAccounts={offlineAccounts}
-      appError={appError}
-      appBusy={appBusy}
-      rootFolders={rootFolders}
-      {folders}
-      {accounts}
-      selectedFolderId={selectedFolderId}
-      selectedAccountId={selectedAccountId}
-      {accountColor}
-      onLoadRootFolder={loadRootFolder}
-      onLoadFolders={loadFolders}
-      onLoadMessages={loadMessages}
-      onRemoveAccount={removeAccount}
-      onOpenSettings={openSettings}
-      onSyncAll={syncAll}
-    />
-
     <button
-      class="group relative cursor-col-resize border-r border-zinc-200/80 bg-zinc-50/35 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:border-zinc-800/80 dark:bg-zinc-950/50"
+      class="absolute right-4 top-2 z-20 inline-flex h-9 cursor-pointer items-center gap-2 rounded-md px-3 text-sm font-medium text-zinc-950 hover:bg-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-500 dark:text-zinc-100 dark:hover:bg-zinc-900"
       type="button"
-      aria-label="Resize accounts panel. Drag or use left and right arrow keys."
-      onpointerdown={(event) => startPanelResize("accounts", event)}
-      onkeydown={(event) => handlePanelResizeKey("accounts", event)}
+      onclick={() => openSettings("general")}
     >
-      <span
-        class="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 rounded-full bg-transparent transition-colors group-hover:bg-indigo-500/70 group-focus:bg-indigo-500/70"
-      ></span>
+      <Settings size={14} />
+      Settings
     </button>
 
-    <MessageList
-      bind:query
-      selectedFolder={selectedFolder}
-      selectedAccount={selectedAccount}
-      accountsCount={accounts.length}
-      messages={messages}
-      selectedMessage={selectedMessage}
-      selectedMessageIds={selectedMessageIds}
-      selectionMode={selectionMode}
-      allVisibleSelected={allVisibleSelected}
-      isPermanentDeleteFolder={isPermanentDeleteFolder}
-      {accountColor}
-      {accountLabel}
-      onSearch={searchMessages}
-      onStartSelection={startSelection}
-      onSelectAllVisible={selectAllVisibleMessages}
-      onMarkSelectedRead={markSelectedRead}
-      onDeleteSelected={deleteSelectedMessages}
-      onToggleMessageSelection={toggleMessageSelection}
-      onOpenMessage={openMessage}
-    />
-
-    <button
-      class="group relative cursor-col-resize border-r border-zinc-200/80 bg-zinc-50/35 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 dark:border-zinc-800/80 dark:bg-zinc-950/50"
-      type="button"
-      aria-label="Resize message list panel. Drag or use left and right arrow keys."
-      onpointerdown={(event) => startPanelResize("message", event)}
-      onkeydown={(event) => handlePanelResizeKey("message", event)}
+    <div
+      bind:this={mailShell}
+      class="absolute inset-x-0 bottom-0 top-[52px] grid min-h-0 overflow-hidden"
+      style:grid-template-columns={mailGridColumns}
     >
-      <span
-        class="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 rounded-full bg-transparent transition-colors group-hover:bg-indigo-500/70 group-focus:bg-indigo-500/70"
-      ></span>
-    </button>
+      <AccountSidebar
+        {unreadTotal}
+        {offlineAccounts}
+        {appError}
+        {appBusy}
+        {rootFolders}
+        {folders}
+        {accounts}
+        {selectedFolderId}
+        {selectedAccountId}
+        {accountColor}
+        onLoadRootFolder={loadRootFolder}
+        onLoadFolders={loadFolders}
+        onLoadMessages={loadMessages}
+        onRemoveAccount={removeAccount}
+        onSyncAll={syncAll}
+      />
 
-    <MessageReader message={selectedMessage} />
+      <button
+        class="group relative cursor-col-resize bg-gradient-to-b from-zinc-200/0 to-zinc-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-zinc-500 dark:from-zinc-900/0 dark:to-zinc-900"
+        type="button"
+        aria-label="Resize accounts panel. Drag or use left and right arrow keys."
+        onpointerdown={(event) => startPanelResize("accounts", event)}
+        onkeydown={(event) => handlePanelResizeKey("accounts", event)}
+      >
+        <span
+          class="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 rounded-full bg-gradient-to-b from-zinc-500/0 to-zinc-500/0 transition-colors group-hover:to-zinc-500 group-focus:to-zinc-500"
+        ></span>
+      </button>
+
+      <MessageList
+        bind:query
+        {selectedFolder}
+        {selectedAccount}
+        accountsCount={accounts.length}
+        {messages}
+        {selectedMessage}
+        {selectedMessageIds}
+        {selectionMode}
+        {allVisibleSelected}
+        {isPermanentDeleteFolder}
+        {accountColor}
+        {accountLabel}
+        onSearch={searchMessages}
+        onStartSelection={startSelection}
+        onSelectAllVisible={selectAllVisibleMessages}
+        onMarkSelectedRead={markSelectedRead}
+        onDeleteSelected={deleteSelectedMessages}
+        onToggleMessageSelection={toggleMessageSelection}
+        onOpenMessage={openMessage}
+      />
+
+      <button
+        class="group relative cursor-col-resize bg-zinc-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-zinc-500 dark:bg-zinc-900"
+        type="button"
+        aria-label="Resize message list panel. Drag or use left and right arrow keys."
+        onpointerdown={(event) => startPanelResize("message", event)}
+        onkeydown={(event) => handlePanelResizeKey("message", event)}
+      >
+        <span
+          class="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 rounded-full bg-transparent transition-colors group-hover:bg-zinc-500 group-focus:bg-zinc-500"
+        ></span>
+      </button>
+
+      <MessageReader message={selectedMessage} />
+    </div>
 
     <SettingsDialog
       bind:open={settingsOpen}

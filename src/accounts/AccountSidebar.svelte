@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { AlertCircle, Apple, CloudOff, Inbox, Mail, RefreshCw, Settings, Trash2 } from '@lucide/svelte';
-  import type { Folder, MailAccount, SettingsTab } from '../shared/mail.types';
+  import { AlertCircle, Apple, CloudOff, Inbox, Mail, RefreshCw, Trash2 } from '@lucide/svelte';
+  import type { Folder, MailAccount } from '../shared/mail.types';
 
   let {
     unreadTotal,
@@ -17,7 +17,6 @@
     onLoadFolders,
     onLoadMessages,
     onRemoveAccount,
-    onOpenSettings,
     onSyncAll
   }: {
     unreadTotal: number;
@@ -34,7 +33,6 @@
     onLoadFolders: (accountId: string) => void | Promise<void>;
     onLoadMessages: (folderId: string) => void | Promise<void>;
     onRemoveAccount: (accountId: string) => void | Promise<void>;
-    onOpenSettings: (tab: SettingsTab) => void;
     onSyncAll: () => void | Promise<void>;
   } = $props();
 
@@ -45,10 +43,10 @@
   }
 </script>
 
-<aside class="flex min-w-0 flex-col border-r border-zinc-200/70 bg-zinc-50/82 shadow-panel backdrop-blur-xl dark:border-zinc-800/80 dark:bg-zinc-950/82">
-  <div class="flex h-16 items-center justify-between border-b border-zinc-200/80 px-4 dark:border-zinc-800/80">
+<aside class="flex min-w-0 flex-col bg-transparent">
+  <div class="flex h-16 items-center justify-between border-b border-zinc-200/80 px-4 dark:border-zinc-900">
     <div class="flex min-w-0 items-center gap-3">
-      <div class="grid size-10 shrink-0 place-items-center rounded-xl bg-indigo-600 text-white shadow-sm ring-1 ring-zinc-50/40 dark:ring-indigo-500/25">
+      <div class="grid size-10 shrink-0 place-items-center rounded-xl bg-zinc-900 text-white shadow-sm ring-1 ring-zinc-200 dark:bg-zinc-100 dark:text-zinc-950 dark:ring-zinc-700">
         <Mail size={20} />
       </div>
       <div class="min-w-0">
@@ -60,7 +58,7 @@
 
   <div class="mail-scrollbar flex-1 overflow-y-auto p-3">
     {#if offlineAccounts}
-      <div class="mb-3 flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-900 dark:border-indigo-900/50 dark:bg-indigo-950/40 dark:text-indigo-100">
+      <div class="mb-3 flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200">
         <CloudOff size={15} />
         {offlineAccounts} account cached for offline reading
       </div>
@@ -79,7 +77,7 @@
         <button
           class={[
             'flex h-9 w-full cursor-pointer items-center justify-between rounded-lg px-3 text-sm font-medium',
-            selectedFolderId === rootFolder.id ? 'bg-indigo-600 text-white shadow-sm' : 'text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-800'
+            selectedFolderId === rootFolder.id ? 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-950' : 'text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-700'
           ]}
           type="button"
           onclick={() => void onLoadRootFolder(rootFolder.id)}
@@ -93,9 +91,9 @@
     <div class="space-y-3">
       {#each accounts as account (account.id)}
         <section>
-          <div class="group flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-100/70 dark:hover:bg-zinc-900/70">
+          <div class="group flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-100/70 dark:hover:bg-zinc-700/70">
             <button class="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left" type="button" onclick={() => void onLoadFolders(account.id)}>
-              <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+              <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-zinc-100 text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300">
                 {#if account.provider === 'icloud'}<Apple size={16} />{:else}<Mail size={16} />{/if}
               </span>
               <span class="min-w-0">
@@ -123,7 +121,7 @@
                 <button
                   class={[
                     'flex h-9 w-full cursor-pointer items-center justify-between rounded-lg px-3 text-sm font-medium',
-                    selectedFolderId === folder.id ? 'bg-indigo-600 text-white shadow-sm' : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-800'
+                    selectedFolderId === folder.id ? 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-950' : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-700'
                   ]}
                   type="button"
                   onclick={() => void onLoadMessages(folder.id)}
@@ -139,17 +137,10 @@
     </div>
   </div>
 
-  <div class="border-t border-zinc-200/80 p-3 dark:border-zinc-800/80">
-    <div class="flex items-center gap-2">
+  <div class="border-t border-zinc-200/80 p-3 dark:border-zinc-900">
+    <div class="flex justify-end">
       <button
-        class="flex h-10 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-3 text-sm font-semibold text-zinc-700 transition-colors duration-200 hover:bg-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-zinc-200 dark:hover:bg-zinc-800"
-        type="button"
-        onclick={() => onOpenSettings('general')}
-      >
-        <Settings size={17} /> Settings
-      </button>
-      <button
-        class="inline-flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 text-sm font-semibold text-zinc-700 transition-colors duration-200 hover:bg-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+        class="inline-flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 text-sm font-semibold text-zinc-700 transition-colors duration-200 hover:bg-zinc-100 focus:outline-none focus:ring-2 focus:ring-zinc-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-700"
         type="button"
         onclick={() => void onSyncAll()}
         disabled={appBusy}
