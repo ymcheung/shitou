@@ -3,7 +3,6 @@
   import type { Folder, MailAccount } from '../shared/mail.types';
 
   let {
-    unreadTotal,
     offlineAccounts,
     appError,
     appBusy,
@@ -19,7 +18,6 @@
     onRemoveAccount,
     onSyncAll
   }: {
-    unreadTotal: number;
     offlineAccounts: number;
     appError: string;
     appBusy: boolean;
@@ -44,18 +42,6 @@
 </script>
 
 <aside class="flex min-w-0 flex-col bg-transparent">
-  <div class="flex h-16 items-center justify-between border-b border-zinc-200/80 px-4 dark:border-zinc-900">
-    <div class="flex min-w-0 items-center gap-3">
-      <div class="grid size-10 shrink-0 place-items-center rounded-xl bg-zinc-900 text-white shadow-sm ring-1 ring-zinc-200 dark:bg-zinc-100 dark:text-zinc-950 dark:ring-zinc-700">
-        <Mail size={20} />
-      </div>
-      <div class="min-w-0">
-        <div class="truncate text-sm font-semibold">Shitou Mail</div>
-        <div class="truncate text-xs text-zinc-500 dark:text-zinc-400">{unreadTotal} unread</div>
-      </div>
-    </div>
-  </div>
-
   <div class="mail-scrollbar flex-1 overflow-y-auto p-3">
     {#if offlineAccounts}
       <div class="mb-3 flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200">

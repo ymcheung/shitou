@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Apple, LogOut, Monitor, Moon, Palette, ShieldAlert, Sun, Trash2, UserPlus, X } from '@lucide/svelte';
+  import { Apple, LogOut, Monitor, Moon, Palette, ShieldAlert, Sun, Trash2, UserPlus } from '@lucide/svelte';
+  import * as Sheet from '$shared/ui/sheet/index.js';
   import { accountColors } from '../accounts/account-colors';
   import { themeOptions } from '../app/theme';
   import type { MailAccount, Provider, SettingsTab, ThemeMode } from '../shared/mail.types';
@@ -47,35 +48,17 @@
   } = $props();
 </script>
 
-{#if open}
-  <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 p-3 backdrop-blur-sm sm:p-4"
-    role="presentation"
-    onclick={(event) => {
-      if (event.target === event.currentTarget) open = false;
-    }}
+<Sheet.Root bind:open>
+  <Sheet.Content
+    side="right"
+    class="border-zinc-200 bg-zinc-50 p-0 shadow-panel data-[side=right]:w-full data-[side=right]:sm:max-w-[860px] dark:border-zinc-800 dark:bg-zinc-900"
   >
-    <div
-      class="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 shadow-panel sm:flex-row dark:border-zinc-800 dark:bg-zinc-900"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="settings-title"
-    >
-      <div class="shrink-0 border-b border-zinc-200 bg-zinc-50 p-3 sm:w-56 sm:border-b-0 sm:border-r dark:border-zinc-800 dark:bg-zinc-950">
-        <div class="mb-3 flex items-center justify-between px-1">
-          <div>
-            <h2 id="settings-title" class="text-sm font-semibold text-zinc-950 dark:text-white">Settings</h2>
-            <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Mail preferences</p>
-          </div>
-          <button
-            class="grid size-8 cursor-pointer place-items-center rounded-md text-zinc-500 transition-colors duration-200 hover:bg-zinc-100 hover:text-zinc-950 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-zinc-50 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white dark:focus:ring-offset-zinc-950"
-            type="button"
-            aria-label="Close settings"
-            onclick={() => (open = false)}
-          >
-            <X size={17} />
-          </button>
-        </div>
+    <div class="flex h-full min-h-0 flex-col overflow-hidden sm:flex-row">
+      <div class="shrink-0 border-b border-zinc-200 bg-zinc-50 p-3 pr-14 sm:w-56 sm:border-b-0 sm:border-r sm:pr-3 dark:border-zinc-800 dark:bg-zinc-950">
+        <Sheet.Header class="mb-3 px-1 py-0">
+          <Sheet.Title class="text-sm font-semibold text-zinc-950 dark:text-white">Settings</Sheet.Title>
+          <Sheet.Description class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">Mail preferences</Sheet.Description>
+        </Sheet.Header>
 
         <div class="flex gap-1 overflow-x-auto sm:block sm:space-y-1 sm:overflow-visible" role="tablist" aria-label="Settings tabs">
           {#each tabs as settingsTab (settingsTab.id)}
@@ -280,5 +263,5 @@
         {/if}
       </div>
     </div>
-  </div>
-{/if}
+  </Sheet.Content>
+</Sheet.Root>

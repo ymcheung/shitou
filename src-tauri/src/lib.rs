@@ -943,6 +943,9 @@ fn app_menu<R: tauri::Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let mut context = tauri::generate_context!();
+    context.set_default_window_icon(Some(tauri::include_image!("icons/icon.png")));
+
     tauri::Builder::default()
         .plugin(tauri_plugin_deep_link::init())
         .menu(app_menu)
@@ -975,6 +978,6 @@ pub fn run() {
             delete_messages,
             set_theme
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running Shitou Mail");
 }

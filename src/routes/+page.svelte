@@ -4,7 +4,7 @@
   import MessageList from "../messages/MessageList.svelte";
   import MessageReader from "../messages/MessageReader.svelte";
   import SettingsDialog from "../settings/SettingsDialog.svelte";
-  import { Settings } from "@lucide/svelte";
+  import { Mail, Settings } from "@lucide/svelte";
   import {
     accountColor as resolveAccountColor,
     accountLabel as resolveAccountLabel,
@@ -587,14 +587,32 @@
       activeResize ? "cursor-col-resize select-none" : "",
     ]}
   >
-    <button
-      class="absolute right-4 top-2 z-20 inline-flex h-9 cursor-pointer items-center gap-2 rounded-md px-3 text-sm font-medium text-zinc-950 hover:bg-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-500 dark:text-zinc-100 dark:hover:bg-zinc-900"
-      type="button"
-      onclick={() => openSettings("general")}
+    <header
+      class="absolute inset-x-0 top-0 z-20 flex h-[52px] items-center justify-between border-b border-zinc-200/80 px-4 dark:border-zinc-900"
     >
-      <Settings size={14} />
-      Settings
-    </button>
+      <div class="flex min-w-0 items-center gap-3">
+        <div
+          class="grid size-9 shrink-0 place-items-center rounded-xl bg-zinc-900 text-white shadow-sm ring-1 ring-zinc-200 dark:bg-zinc-100 dark:text-zinc-950 dark:ring-zinc-700"
+        >
+          <Mail size={18} />
+        </div>
+        <div class="min-w-0">
+          <div class="truncate text-sm font-semibold">Shitou Mail</div>
+          <div class="truncate text-xs text-zinc-500 dark:text-zinc-400">
+            {unreadTotal} unread
+          </div>
+        </div>
+      </div>
+
+      <button
+        class="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-md px-3 text-sm font-medium text-zinc-950 hover:bg-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-500 dark:text-zinc-100 dark:hover:bg-zinc-900"
+        type="button"
+        onclick={() => openSettings("general")}
+      >
+        <Settings size={14} />
+        Settings
+      </button>
+    </header>
 
     <div
       bind:this={mailShell}
@@ -602,7 +620,6 @@
       style:grid-template-columns={mailGridColumns}
     >
       <AccountSidebar
-        {unreadTotal}
         {offlineAccounts}
         {appError}
         {appBusy}

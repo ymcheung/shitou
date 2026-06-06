@@ -8,7 +8,11 @@ const config = {
       pages: 'build',
       assets: 'build',
       fallback: 'index.html'
-    })
+    }),
+    alias: {
+      $shared: './src/shared',
+      '$shared/*': './src/shared/*'
+    }
   }
 };
 
