@@ -329,14 +329,24 @@
   }
 
   async function deleteSelectedMessages() {
-    if (selectedMessageIds.length === 0) return;
+    const messageIds =
+      selectedMessageIds.length > 0
+        ? selectedMessageIds
+        : selectedMessage
+          ? [selectedMessage.id]
+          : [];
+    if (messageIds.length === 0) return;
     if (
       isPermanentDeleteFolder &&
-      !window.confirm("Permanently delete the selected mail?")
+      !window.confirm(
+        messageIds.length === 1
+          ? "Permanently delete this mail?"
+          : "Permanently delete the selected mail?",
+      )
     ) {
       return;
     }
-    await mailApi.deleteMessages(selectedMessageIds);
+    await mailApi.deleteMessages(messageIds);
     selectedMessageIds = [];
     await refreshFolders();
     if (selectedFolderId) await loadMessages(selectedFolderId);
@@ -713,7 +723,11 @@
         ></span>
       </button>
 
-      <MessageReader message={selectedMessage} />
+      <MessageReader
+        message={selectedMessage}
+        {isPermanentDeleteFolder}
+        onDeleteMessage={deleteSelectedMessages}
+      />
     </div>
 
     <SettingsDialog
@@ -723,6 +737,7 @@
       bind:icloudPassword
       {theme}
       {accounts}
+      {appBusy}
       canAddAccounts={!isDemoMode}
       {isDemoMode}
       {accountColor}

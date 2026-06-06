@@ -111,7 +111,7 @@
             onclick={() => void onDeleteSelected()}
           >
             <Trash2 size={14} />
-            {isPermanentDeleteFolder ? "Delete forever" : "Delete"}
+            {isPermanentDeleteFolder ? "Delete forever" : "Move to Trash"}
           </button>
         {/if}
       </div>

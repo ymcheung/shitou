@@ -17,12 +17,10 @@ export function buildRootFolders(folders: Folder[]): Folder[] {
     id: definition.id,
     accountId: 'root',
     name: definition.name,
-    unreadCount: folders
-      .filter((folder) => definition.names.includes(folder.name.toLowerCase()))
-      .reduce((total, folder) => total + folder.unreadCount, 0)
+    unreadCount: folders.filter((folder) => definition.names.includes(folder.name.toLowerCase())).reduce((total, folder) => total + folder.unreadCount, 0)
   }));
 }
 
 export function isPermanentDeleteFolder(folder: Folder | null) {
-  return folder ? ['trash', 'spam', 'junk'].includes(folder.name.toLowerCase()) : false;
+  return folder ? folder.name.toLowerCase() === 'trash' : false;
 }

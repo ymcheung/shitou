@@ -21,12 +21,27 @@ export const demoAccounts: MailAccount[] = [
 
 export const demoFolders: Folder[] = [
   { id: 'inbox', accountId: 'acc-gmail', name: 'Inbox', unreadCount: 1 },
-  { id: 'important', accountId: 'acc-gmail', name: 'Important', unreadCount: 0 },
+  {
+    id: 'important',
+    accountId: 'acc-gmail',
+    name: 'Important',
+    unreadCount: 0
+  },
   { id: 'archive', accountId: 'acc-gmail', name: 'Archive', unreadCount: 0 },
   { id: 'trash', accountId: 'acc-gmail', name: 'Trash', unreadCount: 0 },
   { id: 'spam', accountId: 'acc-gmail', name: 'Spam', unreadCount: 1 },
-  { id: 'icloud-inbox', accountId: 'acc-icloud', name: 'Inbox', unreadCount: 1 },
-  { id: 'icloud-trash', accountId: 'acc-icloud', name: 'Trash', unreadCount: 0 },
+  {
+    id: 'icloud-inbox',
+    accountId: 'acc-icloud',
+    name: 'Inbox',
+    unreadCount: 1
+  },
+  {
+    id: 'icloud-trash',
+    accountId: 'acc-icloud',
+    name: 'Trash',
+    unreadCount: 0
+  },
   { id: 'icloud-spam', accountId: 'acc-icloud', name: 'Spam', unreadCount: 0 }
 ];
 
@@ -65,7 +80,14 @@ let demoMessages: MessageDetail[] = [
       'The OAuth request includes https://www.googleapis.com/auth/gmail.readonly and offline access for sync refresh. It does not request modify, send, compose, calendar, contacts, or notification scopes.',
     bodyHtml:
       '<p>The OAuth request includes <code>https://www.googleapis.com/auth/gmail.readonly</code> and offline access for sync refresh.</p><p>It does not request modify, send, compose, calendar, contacts, or notification scopes.</p>',
-    attachments: [{ id: 'att-1', fileName: 'scope-audit.txt', mimeType: 'text/plain', byteSize: 1842 }]
+    attachments: [
+      {
+        id: 'att-1',
+        fileName: 'scope-audit.txt',
+        mimeType: 'text/plain',
+        byteSize: 1842
+      }
+    ]
   },
   {
     id: 'msg-3',
@@ -118,8 +140,18 @@ let demoMessages: MessageDetail[] = [
     bodyHtml:
       '<p>Attached are two signature samples for the demo mailbox.</p><p>The HTML version uses a normal text signature so we can compare it with image-heavy signatures separately.</p><div class="signature"><p>Jordan Lee<br>Design Systems<br>Shitou Mail</p></div>',
     attachments: [
-      { id: 'att-2', fileName: 'signature-samples.pdf', mimeType: 'application/pdf', byteSize: 482176 },
-      { id: 'att-3', fileName: 'brand-footer.png', mimeType: 'image/png', byteSize: 128904 }
+      {
+        id: 'att-2',
+        fileName: 'signature-samples.pdf',
+        mimeType: 'application/pdf',
+        byteSize: 482176
+      },
+      {
+        id: 'att-3',
+        fileName: 'brand-footer.png',
+        mimeType: 'image/png',
+        byteSize: 128904
+      }
     ]
   },
   {
@@ -134,8 +166,7 @@ let demoMessages: MessageDetail[] = [
     receivedAt: new Date(Date.now() - 1000 * 60 * 310).toISOString(),
     hasAttachments: false,
     isUnread: false,
-    bodyText:
-      'Please confirm the reader keeps inline signature images visible in the offline body cache.\n\nAvery Chen\nNorthstar Labs',
+    bodyText: 'Please confirm the reader keeps inline signature images visible in the offline body cache.\n\nAvery Chen\nNorthstar Labs',
     bodyHtml:
       '<p>Please confirm the reader keeps inline signature images visible in the offline body cache.</p><div class="signature"><p><img alt="Northstar Labs mark" width="36" height="36" src="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2236%22%20height=%2236%22%20viewBox=%220%200%2036%2036%22%3E%3Crect%20width=%2236%22%20height=%2236%22%20rx=%228%22%20fill=%22%2318181b%22/%3E%3Cpath%20d=%22M18%206l3.2%208.8L30%2018l-8.8%203.2L18%2030l-3.2-8.8L6%2018l8.8-3.2L18%206z%22%20fill=%22%23facc15%22/%3E%3C/svg%3E"></p><p>Avery Chen<br>Northstar Labs</p><p><img alt="Certified offline badge" width="96" height="24" src="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2296%22%20height=%2224%22%20viewBox=%220%200%2096%2024%22%3E%3Crect%20width=%2296%22%20height=%2224%22%20rx=%2212%22%20fill=%22%23ecfeff%22/%3E%3Ctext%20x=%2212%22%20y=%2216%22%20font-family=%22Arial%22%20font-size=%2210%22%20font-weight=%22700%22%20fill=%22%230e7490%22%3EOFFLINE%20READY%3C/text%3E%3C/svg%3E"></p></div>',
     attachments: []
@@ -164,10 +195,7 @@ export const demoMailbox = {
   connectProviderFallback(provider: 'gmail' | 'outlook') {
     return {
       provider,
-      authUrl:
-        provider === 'gmail'
-          ? 'https://accounts.google.com/o/oauth2/v2/auth'
-          : 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize'
+      authUrl: provider === 'gmail' ? 'https://accounts.google.com/o/oauth2/v2/auth' : 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize'
     };
   },
   connectIcloudFallback(email: string): MailAccount {
@@ -208,7 +236,7 @@ export const demoMailbox = {
     for (const message of demoMessages) {
       if (!messageIds.includes(message.id)) continue;
       const currentFolder = demoFolders.find((folder) => folder.id === message.folderId);
-      if (currentFolder && ['trash', 'spam', 'junk'].includes(currentFolder.name.toLowerCase())) {
+      if (currentFolder?.name.toLowerCase() === 'trash') {
         demoMessages = demoMessages.filter((item) => item.id !== message.id);
         count += 1;
         continue;

@@ -664,7 +664,7 @@ fn delete_messages(
                AND folder_id IN (
                  SELECT id
                  FROM folders
-                 WHERE lower(name) IN ('trash', 'spam', 'junk')
+                 WHERE lower(name) = 'trash'
                )",
         )?;
         for message_id in &message_ids {
