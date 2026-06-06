@@ -7,7 +7,7 @@
 
   const tabs: Array<{ id: SettingsTab; label: string; icon: typeof Monitor }> = [
     { id: 'general', label: 'General', icon: Monitor },
-    { id: 'accounts', label: 'Accounts', icon: UserPlus },
+    { id: 'accounts', label: 'Mail Accounts', icon: UserPlus },
     { id: 'advanced', label: 'Advanced', icon: ShieldAlert }
   ];
 
@@ -137,13 +137,13 @@
         {:else if tab === 'accounts'}
           <section class="space-y-5">
             <div class="border-b border-zinc-200 pb-4 dark:border-zinc-800">
-              <h3 class="text-lg font-semibold text-zinc-950 dark:text-white">Accounts</h3>
+              <h3 class="text-lg font-semibold text-zinc-950 dark:text-white">Mail Accounts</h3>
               <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Add mailboxes, remove mailboxes, and tune account colors.</p>
             </div>
 
             <div class="grid gap-3 sm:grid-cols-[11rem_1fr] sm:items-start">
               <div>
-                <div class="text-sm font-semibold text-zinc-950 dark:text-white">Add account</div>
+                <div class="text-sm font-semibold text-zinc-950 dark:text-white">Add mail account</div>
                 <p class="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">Connect a mailbox provider.</p>
               </div>
               {#if isDemoMode || !canAddAccounts}
@@ -194,44 +194,71 @@
               {/if}
             </div>
 
-            <div class="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
-              {#each accounts as account (account.id)}
-                <div class="bg-zinc-50 p-3 first:rounded-t-lg last:rounded-b-lg dark:bg-zinc-900">
-                  <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div class="min-w-0">
-                      <div class="flex min-w-0 items-center gap-2">
-                        <span class="size-2.5 shrink-0 rounded-full ring-2 ring-zinc-50 dark:ring-zinc-900" style:background-color={accountColor(account.id)}></span>
-                        <div class="truncate text-sm font-semibold text-zinc-950 dark:text-white">{account.displayName}</div>
-                      </div>
-                      <div class="mt-1 truncate text-sm text-zinc-500 dark:text-zinc-400">{account.email}</div>
-                    </div>
-                    <button
-                      class="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md border border-red-200 bg-zinc-50 px-3 text-sm font-semibold text-red-700 transition-colors duration-200 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-zinc-50 dark:border-red-950 dark:bg-zinc-950 dark:text-red-300 dark:hover:bg-red-950/40 dark:focus:ring-offset-zinc-900"
-                      type="button"
-                      onclick={() => void onRemoveAccount(account.id)}
-                    >
-                      <Trash2 size={15} /> Remove
-                    </button>
+            <div class="space-y-3 border-t border-zinc-200 pt-5 dark:border-zinc-800">
+              <div>
+                <div class="text-sm font-semibold text-zinc-950 dark:text-white">Connected mail accounts</div>
+                <p class="mt-1 text-xs leading-5 text-zinc-500 dark:text-zinc-400">Mailboxes available in Shitou Mail.</p>
+              </div>
+
+              {#if accounts.length === 0}
+                <div class="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 px-4 py-6 text-center dark:border-zinc-700 dark:bg-zinc-950/60">
+                  <div class="mx-auto grid size-10 place-items-center rounded-lg border border-zinc-200 bg-zinc-100 text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+                    <UserPlus size={18} />
                   </div>
-                  <div class="mt-3 flex flex-wrap items-center gap-2">
-                    <span class="inline-flex items-center gap-1 text-xs font-semibold text-zinc-500 dark:text-zinc-400">
-                      <Palette size={14} /> Color
-                    </span>
-                    {#each accountColors as color (color)}
-                      <button
-                        class={[
-                          'size-6 cursor-pointer rounded-full border-2 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-zinc-50 dark:focus:ring-offset-zinc-900',
-                          accountColor(account.id) === color ? 'border-zinc-900 dark:border-zinc-200' : 'border-zinc-200 hover:border-zinc-300 dark:border-zinc-900 dark:hover:border-zinc-600'
-                        ]}
-                        style:background-color={color}
-                        type="button"
-                        aria-label={`Set ${account.displayName} color to ${color}`}
-                        onclick={() => onUpdateAccountColor(account.id, color)}
-                      ></button>
-                    {/each}
-                  </div>
+                  <div class="mt-3 text-sm font-semibold text-zinc-950 dark:text-white">No mail accounts connected</div>
+                  <p class="mx-auto mt-1 max-w-sm text-sm leading-6 text-zinc-500 dark:text-zinc-400">
+                    {#if isDemoMode || !canAddAccounts}
+                      Add a real mail session to connect Gmail, Outlook, or iCloud accounts.
+                    {:else}
+                      Use the provider controls above to connect your first mailbox.
+                    {/if}
+                  </p>
                 </div>
-              {/each}
+              {:else}
+                <div class="divide-y divide-zinc-200 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+                  {#each accounts as account (account.id)}
+                    <div class="bg-zinc-50 p-3 first:rounded-t-lg last:rounded-b-lg dark:bg-zinc-900">
+                      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div class="min-w-0">
+                          <div class="flex min-w-0 items-center gap-2">
+                            <span class="size-2.5 shrink-0 rounded-full ring-2 ring-zinc-50 dark:ring-zinc-900" style:background-color={accountColor(account.id)}></span>
+                            <div class="truncate text-sm font-semibold text-zinc-950 dark:text-white">
+                              {account.displayName}
+                            </div>
+                          </div>
+                          <div class="mt-1 truncate text-sm text-zinc-500 dark:text-zinc-400">
+                            {account.email}
+                          </div>
+                        </div>
+                        <button
+                          class="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md border border-red-200 bg-zinc-50 px-3 text-sm font-semibold text-red-700 transition-colors duration-200 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-zinc-50 dark:border-red-950 dark:bg-zinc-950 dark:text-red-300 dark:hover:bg-red-950/40 dark:focus:ring-offset-zinc-900"
+                          type="button"
+                          onclick={() => void onRemoveAccount(account.id)}
+                        >
+                          <Trash2 size={15} /> Remove
+                        </button>
+                      </div>
+                      <div class="mt-3 flex flex-wrap items-center gap-2">
+                        <span class="inline-flex items-center gap-1 text-xs font-semibold text-zinc-500 dark:text-zinc-400">
+                          <Palette size={14} /> Color
+                        </span>
+                        {#each accountColors as color (color)}
+                          <button
+                            class={[
+                              'size-6 cursor-pointer rounded-full border-2 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-zinc-50 dark:focus:ring-offset-zinc-900',
+                              accountColor(account.id) === color ? 'border-zinc-900 dark:border-zinc-200' : 'border-zinc-200 hover:border-zinc-300 dark:border-zinc-900 dark:hover:border-zinc-600'
+                            ]}
+                            style:background-color={color}
+                            type="button"
+                            aria-label={`Set ${account.displayName} color to ${color}`}
+                            onclick={() => onUpdateAccountColor(account.id, color)}
+                          ></button>
+                        {/each}
+                      </div>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
             </div>
           </section>
         {:else}

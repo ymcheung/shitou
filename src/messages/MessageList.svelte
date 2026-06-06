@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CheckCircle2, Paperclip, Search, Trash2 } from "@lucide/svelte";
+  import { CheckCircle2, Paperclip, Trash2 } from "@lucide/svelte";
   import { formatRelative } from "../app/formatting";
   import type {
     Folder,
@@ -9,7 +9,6 @@
   } from "../shared/mail.types";
 
   let {
-    query = $bindable(""),
     selectedFolder,
     selectedAccount,
     accountsCount,
@@ -21,7 +20,6 @@
     isPermanentDeleteFolder,
     accountColor,
     accountLabel,
-    onSearch,
     onStartSelection,
     onSelectAllVisible,
     onMarkSelectedRead,
@@ -29,7 +27,6 @@
     onToggleMessageSelection,
     onOpenMessage,
   }: {
-    query: string;
     selectedFolder: Folder | null;
     selectedAccount: MailAccount | null;
     accountsCount: number;
@@ -41,7 +38,6 @@
     isPermanentDeleteFolder: boolean;
     accountColor: (accountId: string) => string;
     accountLabel: (accountId: string) => string;
-    onSearch: () => void | Promise<void>;
     onStartSelection: () => void;
     onSelectAllVisible: () => void;
     onMarkSelectedRead: () => void | Promise<void>;
@@ -73,20 +69,6 @@
         </p>
       </div>
     </div>
-    <form
-      class="relative"
-      onsubmit={(event) => {
-        event.preventDefault();
-        void onSearch();
-      }}
-    >
-      <Search class="absolute left-3 top-3 text-zinc-400" size={16} />
-      <input
-        class="h-11 w-full rounded-xl border-zinc-200 bg-zinc-50 pl-9 text-sm shadow-sm placeholder:text-zinc-400 focus:border-zinc-500 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900"
-        placeholder="Search offline mail"
-        bind:value={query}
-      />
-    </form>
     <div class="mt-3 flex items-center justify-between gap-2">
       <div class="flex min-w-0 items-center gap-2">
         <button

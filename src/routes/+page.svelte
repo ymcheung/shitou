@@ -4,7 +4,7 @@
   import MessageList from "../messages/MessageList.svelte";
   import MessageReader from "../messages/MessageReader.svelte";
   import SettingsDialog from "../settings/SettingsDialog.svelte";
-  import { Mail, Settings } from "@lucide/svelte";
+  import { Mail, RefreshCw, Search, Settings } from "@lucide/svelte";
   import {
     accountColor as resolveAccountColor,
     accountLabel as resolveAccountLabel,
@@ -604,14 +604,48 @@
         </div>
       </div>
 
-      <button
-        class="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-md px-3 text-sm font-medium text-zinc-950 hover:bg-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-500 dark:text-zinc-100 dark:hover:bg-zinc-900"
-        type="button"
-        onclick={() => openSettings("general")}
-      >
-        <Settings size={14} />
-        Settings
-      </button>
+      <div class="ml-4 flex min-w-0 flex-1 items-center justify-end gap-2">
+        <form
+          class="relative min-w-[180px] max-w-80 flex-1"
+          onsubmit={(event) => {
+            event.preventDefault();
+            void searchMessages();
+          }}
+        >
+          <label class="sr-only" for="mail-header-search"
+            >Search offline mail</label
+          >
+          <Search
+            class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 dark:text-zinc-500"
+            size={15}
+          />
+          <input
+            id="mail-header-search"
+            class="h-9 w-full rounded-lg border border-zinc-300 bg-white pl-9 pr-3 text-sm font-medium text-zinc-900 shadow-sm outline-none placeholder:text-zinc-400 hover:border-zinc-400 focus:border-sky-600 focus:ring-2 focus:ring-sky-600/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:hover:border-zinc-600 dark:focus:border-sky-400 dark:focus:ring-sky-400/20"
+            placeholder="Search offline mail"
+            bind:value={query}
+          />
+        </form>
+
+        <button
+          class="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-sky-700 bg-sky-700 px-3 text-sm font-semibold text-white shadow-sm shadow-sky-950/10 hover:border-sky-800 hover:bg-sky-800 focus:outline-none focus:ring-2 focus:ring-sky-600/40 disabled:cursor-not-allowed disabled:opacity-60 dark:border-sky-500/70 dark:bg-sky-500 dark:text-zinc-950 dark:shadow-black/20 dark:hover:border-sky-400 dark:hover:bg-sky-400 dark:focus:ring-sky-400/40"
+          type="button"
+          onclick={() => void syncAll()}
+          disabled={appBusy}
+        >
+          <RefreshCw size={14} class={appBusy ? "animate-spin" : ""} />
+          Sync
+        </button>
+
+        <button
+          class="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-800 shadow-sm hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-500/30 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:shadow-black/20 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:focus:ring-zinc-400/30"
+          type="button"
+          onclick={() => openSettings("general")}
+        >
+          <Settings size={14} />
+          Settings
+        </button>
+      </div>
     </header>
 
     <div
@@ -633,7 +667,6 @@
         onLoadFolders={loadFolders}
         onLoadMessages={loadMessages}
         onRemoveAccount={removeAccount}
-        onSyncAll={syncAll}
       />
 
       <button
@@ -649,7 +682,6 @@
       </button>
 
       <MessageList
-        bind:query
         {selectedFolder}
         {selectedAccount}
         accountsCount={accounts.length}
@@ -661,7 +693,6 @@
         {isPermanentDeleteFolder}
         {accountColor}
         {accountLabel}
-        onSearch={searchMessages}
         onStartSelection={startSelection}
         onSelectAllVisible={selectAllVisibleMessages}
         onMarkSelectedRead={markSelectedRead}

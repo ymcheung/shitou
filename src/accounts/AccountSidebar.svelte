@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { AlertCircle, Apple, CloudOff, Inbox, Mail, RefreshCw, Trash2 } from '@lucide/svelte';
+  import { AlertCircle, Apple, CloudOff, Inbox, Mail, Trash2 } from '@lucide/svelte';
   import type { Folder, MailAccount } from '../shared/mail.types';
 
   let {
@@ -15,8 +15,7 @@
     onLoadRootFolder,
     onLoadFolders,
     onLoadMessages,
-    onRemoveAccount,
-    onSyncAll
+    onRemoveAccount
   }: {
     offlineAccounts: number;
     appError: string;
@@ -31,12 +30,63 @@
     onLoadFolders: (accountId: string) => void | Promise<void>;
     onLoadMessages: (folderId: string) => void | Promise<void>;
     onRemoveAccount: (accountId: string) => void | Promise<void>;
-    onSyncAll: () => void | Promise<void>;
   } = $props();
 
-  function folderIcon(folderId: string) {
-    if (folderId.includes('trash')) return Trash2;
-    if (folderId.includes('spam')) return AlertCircle;
+  const sidebarStyles = {
+    folderButton: 'flex h-9 w-full cursor-pointer items-center justify-between rounded-lg px-3 text-sm font-medium',
+    iconChip: 'grid size-6 shrink-0 place-items-center rounded-md ring-1',
+    selectedIconChip: 'bg-white/18 text-current ring-white/25 dark:bg-black/10 dark:ring-black/10',
+    unreadBadge: 'rounded-full px-1.5 py-0.5 text-xs font-semibold',
+    selectedUnreadBadge: 'bg-white/20 text-current dark:bg-black/10'
+  } as const;
+
+  const folderThemes = {
+    inbox: {
+      chip: 'bg-indigo-50 text-indigo-700 ring-indigo-200 dark:bg-indigo-950/45 dark:text-indigo-200 dark:ring-indigo-800/70',
+      idle:
+        'text-zinc-700 hover:bg-indigo-50 hover:text-indigo-700 dark:text-zinc-200 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-100',
+      selected: 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/10',
+      unread: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-200'
+    },
+    trash: {
+      chip: 'bg-zinc-100 text-zinc-700 ring-zinc-200 dark:bg-zinc-900 dark:text-zinc-200 dark:ring-zinc-700',
+      idle:
+        'text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:hover:text-zinc-50',
+      selected: 'bg-zinc-800 text-white shadow-sm shadow-zinc-900/10 dark:bg-zinc-200 dark:text-zinc-950',
+      unread: 'bg-zinc-200 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100'
+    },
+    spam: {
+      chip: 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/45 dark:text-red-200 dark:ring-red-800/70',
+      idle:
+        'text-zinc-700 hover:bg-red-50 hover:text-red-900 dark:text-zinc-200 dark:hover:bg-red-950/40 dark:hover:text-red-100',
+      selected: 'bg-red-600 text-white shadow-sm shadow-red-900/10 dark:bg-red-400 dark:text-red-950',
+      unread: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200'
+    },
+    default: {
+      chip: 'bg-zinc-100 text-zinc-600 ring-zinc-200 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-800',
+      idle:
+        'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-700',
+      selected: 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-950',
+      unread: 'text-current'
+    }
+  } as const;
+
+  function folderKey(folder: Pick<Folder, 'id' | 'name'>) {
+    return `${folder.id}:${folder.name}`.toLowerCase();
+  }
+
+  function folderTheme(folder: Pick<Folder, 'id' | 'name'>) {
+    const key = folderKey(folder);
+    if (key.includes('trash')) return folderThemes.trash;
+    if (key.includes('spam') || key.includes('junk')) return folderThemes.spam;
+    if (key.includes('inbox')) return folderThemes.inbox;
+    return folderThemes.default;
+  }
+
+  function folderIcon(folder: Pick<Folder, 'id' | 'name'>) {
+    const key = folderKey(folder);
+    if (key.includes('trash')) return Trash2;
+    if (key.includes('spam') || key.includes('junk')) return AlertCircle;
     return Inbox;
   }
 </script>
@@ -59,17 +109,38 @@
 
     <div class="mb-4 space-y-1">
       {#each rootFolders as rootFolder (rootFolder.id)}
-        {@const RootIcon = folderIcon(rootFolder.id)}
+        {@const RootIcon = folderIcon(rootFolder)}
+        {@const rootTheme = folderTheme(rootFolder)}
+        {@const rootSelected = selectedFolderId === rootFolder.id}
         <button
           class={[
-            'flex h-9 w-full cursor-pointer items-center justify-between rounded-lg px-3 text-sm font-medium',
-            selectedFolderId === rootFolder.id ? 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-950' : 'text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-700'
+            sidebarStyles.folderButton,
+            rootSelected ? rootTheme.selected : rootTheme.idle
           ]}
           type="button"
           onclick={() => void onLoadRootFolder(rootFolder.id)}
         >
-          <span class="flex items-center gap-2"><RootIcon size={15} /> {rootFolder.name}</span>
-          {#if rootFolder.unreadCount}<span class="text-xs font-semibold">{rootFolder.unreadCount}</span>{/if}
+          <span class="flex items-center gap-2">
+            <span
+              class={[
+                sidebarStyles.iconChip,
+                rootSelected ? sidebarStyles.selectedIconChip : rootTheme.chip
+              ]}
+            >
+              <RootIcon size={15} />
+            </span>
+            {rootFolder.name}
+          </span>
+          {#if rootFolder.unreadCount}
+            <span
+              class={[
+                sidebarStyles.unreadBadge,
+                rootSelected ? sidebarStyles.selectedUnreadBadge : rootTheme.unread
+              ]}
+            >
+              {rootFolder.unreadCount}
+            </span>
+          {/if}
         </button>
       {/each}
     </div>
@@ -103,37 +174,44 @@
           {#if selectedAccountId === account.id}
             <div class="mt-1 space-y-1">
               {#each folders as folder (folder.id)}
-                {@const FolderIcon = folderIcon(folder.id)}
+                {@const FolderIcon = folderIcon(folder)}
+                {@const folderThemeStyles = folderTheme(folder)}
+                {@const folderSelected = selectedFolderId === folder.id}
                 <button
                   class={[
-                    'flex h-9 w-full cursor-pointer items-center justify-between rounded-lg px-3 text-sm font-medium',
-                    selectedFolderId === folder.id ? 'bg-zinc-900 text-white shadow-sm dark:bg-zinc-100 dark:text-zinc-950' : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-700'
+                    sidebarStyles.folderButton,
+                    folderSelected ? folderThemeStyles.selected : folderThemeStyles.idle
                   ]}
                   type="button"
                   onclick={() => void onLoadMessages(folder.id)}
                 >
-                  <span class="flex items-center gap-2"><FolderIcon size={15} /> {folder.name}</span>
-                  {#if folder.unreadCount}<span class="text-xs font-semibold">{folder.unreadCount}</span>{/if}
+                  <span class="flex items-center gap-2">
+                    <span
+                      class={[
+                        sidebarStyles.iconChip,
+                        folderSelected ? sidebarStyles.selectedIconChip : folderThemeStyles.chip
+                      ]}
+                    >
+                      <FolderIcon size={15} />
+                    </span>
+                    {folder.name}
+                  </span>
+                  {#if folder.unreadCount}
+                    <span
+                      class={[
+                        sidebarStyles.unreadBadge,
+                        folderSelected ? sidebarStyles.selectedUnreadBadge : folderThemeStyles.unread
+                      ]}
+                    >
+                      {folder.unreadCount}
+                    </span>
+                  {/if}
                 </button>
               {/each}
             </div>
           {/if}
         </section>
       {/each}
-    </div>
-  </div>
-
-  <div class="border-t border-zinc-200/80 p-3 dark:border-zinc-900">
-    <div class="flex justify-end">
-      <button
-        class="inline-flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 text-sm font-semibold text-zinc-700 transition-colors duration-200 hover:bg-zinc-100 focus:outline-none focus:ring-2 focus:ring-zinc-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-700"
-        type="button"
-        onclick={() => void onSyncAll()}
-        disabled={appBusy}
-      >
-        <RefreshCw size={16} class={appBusy ? 'animate-spin' : ''} />
-        Sync
-      </button>
     </div>
   </div>
 </aside>
