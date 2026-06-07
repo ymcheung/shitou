@@ -250,7 +250,7 @@
                 <button
                   class="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 text-sm font-semibold text-zinc-700 transition-colors duration-200 hover:border-zinc-300 hover:bg-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:focus:ring-offset-zinc-950"
                   type="button"
-                  onclick={onLogout}
+                  onclick={() => void onLogout()}
                 >
                   <LogOut size={16} /> Log out
                 </button>
@@ -555,7 +555,7 @@
                 <button
                   class="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md bg-red-600 px-3 text-sm font-semibold text-white transition-colors duration-200 hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-red-50 dark:focus:ring-offset-red-950"
                   type="button"
-                  onclick={onDeleteUserAccount}
+                  onclick={() => void onDeleteUserAccount()}
                 >
                   <Trash2 size={16} /> Delete Account
                 </button>

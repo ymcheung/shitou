@@ -352,6 +352,28 @@
     if (selectedFolderId) await loadMessages(selectedFolderId);
   }
 
+  function isTextEditingTarget(target: EventTarget | null) {
+    if (!(target instanceof HTMLElement)) return false;
+    const tagName = target.tagName.toLowerCase();
+    return (
+      target.isContentEditable ||
+      tagName === "input" ||
+      tagName === "textarea" ||
+      tagName === "select"
+    );
+  }
+
+  function handleGlobalKeydown(event: KeyboardEvent) {
+    if (event.key !== "Delete" && event.key !== "Backspace") return;
+    if (!isSignedIn || settingsOpen || activeResize) return;
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (isTextEditingTarget(event.target)) return;
+    if (selectedMessageIds.length === 0 && !selectedMessage) return;
+
+    event.preventDefault();
+    void deleteSelectedMessages();
+  }
+
   async function syncAll() {
     appBusy = true;
     appError = "";
@@ -444,16 +466,28 @@
     settingsOpen = true;
   }
 
-  async function logout() {
-    if (!window.confirm("Log out of Shitou Mail?")) return;
-    await api.authLogout();
+  function clearSessionState() {
+    accounts = [];
+    folders = [];
+    foldersByAccount = {};
+    messages = [];
+    selectedAccountId = "";
+    selectedFolderId = "";
+    selectedMessage = null;
+    selectedMessageIds = [];
+    accountColorOverrides = {};
+    selectionMode = false;
+    accountPanelOpen = false;
+    settingsOpen = false;
     isSignedIn = false;
     isDemoMode = false;
     session = null;
-    selectedMessage = null;
-    selectedMessageIds = [];
-    selectionMode = false;
-    settingsOpen = false;
+    appError = "";
+  }
+
+  async function logout() {
+    await api.authLogout();
+    clearSessionState();
   }
 
   function updateAccountColor(accountId: string, color: string) {
@@ -469,19 +503,7 @@
       return;
     }
     await api.authLogout();
-    accounts = [];
-    folders = [];
-    foldersByAccount = {};
-    messages = [];
-    selectedAccountId = "";
-    selectedFolderId = "";
-    selectedMessage = null;
-    selectedMessageIds = [];
-    accountColorOverrides = {};
-    settingsOpen = false;
-    isSignedIn = false;
-    isDemoMode = false;
-    session = null;
+    clearSessionState();
   }
 
   function accountColor(accountId: string) {
@@ -570,6 +592,7 @@
   onpointermove={updatePanelResize}
   onpointerup={stopPanelResize}
   onpointercancel={stopPanelResize}
+  onkeydown={handleGlobalKeydown}
 />
 
 {#if !authReady}

@@ -47,6 +47,17 @@
   } = $props();
 
   let selectedMessageIdSet = $derived(new Set(selectedMessageIds));
+
+  function handleMessageClick(event: MouseEvent, messageId: string) {
+    if (event.metaKey || event.ctrlKey) {
+      event.preventDefault();
+      onStartSelection();
+      onToggleMessageSelection(messageId);
+      return;
+    }
+
+    void onOpenMessage(messageId);
+  }
 </script>
 
 <section
@@ -151,7 +162,7 @@
           <button
             class="min-w-0 flex-1 cursor-pointer text-left focus-visible:rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
             type="button"
-            onclick={() => void onOpenMessage(message.id)}
+            onclick={(event) => handleMessageClick(event, message.id)}
           >
             <div class="flex items-center justify-between gap-3">
               <span class="flex min-w-0 items-center gap-2">
