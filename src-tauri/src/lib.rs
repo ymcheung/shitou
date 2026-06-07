@@ -884,6 +884,7 @@ fn row_to_message_summary(row: &rusqlite::Row<'_>) -> rusqlite::Result<MessageSu
         account_id: row.get(2)?,
         provider_message_id: row.get(3)?,
         sender: row.get(4)?,
+        sender_avatar_url: None,
         recipients: serde_json::from_str(&recipients_json).unwrap_or_default(),
         subject: row.get(6)?,
         preview: row.get(7)?,

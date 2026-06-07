@@ -7,6 +7,7 @@
     Trash2,
   } from "@lucide/svelte";
   import { formatBytes } from "../app/formatting";
+  import SenderAvatar from "./SenderAvatar.svelte";
   import type { MessageDetail } from "../shared/mail.types";
 
   let {
@@ -56,23 +57,33 @@
         >
           {message.subject}
         </h2>
-        <div class="mt-4 grid gap-1.5 text-sm text-zinc-500 dark:text-zinc-400">
-          <div>
-            <span class="font-medium text-zinc-700 dark:text-zinc-200"
-              >From:</span
-            >
-            {message.sender}
-          </div>
-          <div>
-            <span class="font-medium text-zinc-700 dark:text-zinc-200">To:</span
-            >
-            {message.recipients.join(", ")}
-          </div>
-          <div>
-            <span class="font-medium text-zinc-700 dark:text-zinc-200"
-              >Received:</span
-            >
-            {new Date(message.receivedAt).toLocaleString()}
+        <div class="mt-5 flex min-w-0 items-start gap-3">
+          <SenderAvatar
+            sender={message.sender}
+            avatarUrl={message.senderAvatarUrl}
+            size="lg"
+          />
+          <div
+            class="grid min-w-0 gap-1.5 text-sm text-zinc-500 dark:text-zinc-400"
+          >
+            <div class="min-w-0">
+              <span class="font-medium text-zinc-700 dark:text-zinc-200"
+                >From:</span
+              >
+              <span class="break-words">{message.sender}</span>
+            </div>
+            <div class="min-w-0">
+              <span class="font-medium text-zinc-700 dark:text-zinc-200"
+                >To:</span
+              >
+              <span class="break-words">{message.recipients.join(", ")}</span>
+            </div>
+            <div>
+              <span class="font-medium text-zinc-700 dark:text-zinc-200"
+                >Received:</span
+              >
+              {new Date(message.receivedAt).toLocaleString()}
+            </div>
           </div>
         </div>
       </div>

@@ -9,6 +9,7 @@
   } from "@lucide/svelte";
   import { onMount, tick } from "svelte";
   import { formatRelative } from "../app/formatting";
+  import SenderAvatar from "./SenderAvatar.svelte";
   import * as ContextMenu from "../shared/ui/context-menu/index.js";
   import type {
     Folder,
@@ -247,10 +248,10 @@
                 data-layout-id={message.id}
                 class={[
                   "message-list-item",
-                  "flex w-full gap-3 border-b border-zinc-200 p-4 hover:bg-zinc-100 dark:border-zinc-900 dark:hover:bg-zinc-700",
+                  "flex w-full gap-3 border-b border-zinc-200 p-4 transition-colors duration-200 dark:border-zinc-900",
                   selectedMessage?.id === message.id
-                    ? "bg-zinc-50 shadow-sm ring-1 ring-inset ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-700"
-                    : "",
+                    ? "bg-zinc-200 shadow-sm hover:bg-zinc-200 dark:bg-zinc-600 dark:hover:bg-zinc-600"
+                    : "hover:bg-zinc-100 dark:hover:bg-zinc-700",
                 ]}
               >
                 <input
@@ -265,6 +266,11 @@
                   disabled={!selectionMode}
                   tabindex={selectionMode ? 0 : -1}
                   onchange={() => onToggleMessageSelection(message.id)}
+                />
+                <SenderAvatar
+                  sender={message.sender}
+                  avatarUrl={message.senderAvatarUrl}
+                  size="sm"
                 />
                 <button
                   class="min-w-0 flex-1 cursor-pointer text-left focus-visible:rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"

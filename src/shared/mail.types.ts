@@ -30,6 +30,7 @@ export type MessageSummary = {
   accountId: string;
   providerMessageId: string;
   sender: string;
+  senderAvatarUrl?: string | null;
   recipients: string[];
   subject: string;
   preview: string;

@@ -74,6 +74,8 @@ pub struct MessageSummary {
     pub account_id: String,
     pub provider_message_id: String,
     pub sender: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sender_avatar_url: Option<String>,
     pub recipients: Vec<String>,
     pub subject: String,
     pub preview: String,
