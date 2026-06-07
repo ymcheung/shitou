@@ -266,13 +266,16 @@
     if (selectedFolderId) await loadMessages(selectedFolderId);
   }
 
-  async function loadMessages(folderId: string) {
+  async function loadMessages(folderId: string, preferredMessageId?: string) {
     selectedFolderId = folderId;
     messages = await mailApi.listMessages(folderId, query);
     selectedMessageIds = [];
     selectionMode = false;
-    selectedMessage = messages[0]
-      ? await mailApi.getMessage(messages[0].id)
+    const nextMessage =
+      messages.find((message) => message.id === preferredMessageId) ??
+      messages[0];
+    selectedMessage = nextMessage
+      ? await mailApi.getMessage(nextMessage.id)
       : null;
   }
 
@@ -328,6 +331,36 @@
     await refreshFolders();
   }
 
+  function selectMessageAfterRemoval(messageIds: string[]) {
+    const removedMessageIds = new Set(messageIds);
+    if (selectedMessage && !removedMessageIds.has(selectedMessage.id)) {
+      return selectedMessage.id;
+    }
+
+    const anchorMessageId =
+      selectedMessage && removedMessageIds.has(selectedMessage.id)
+        ? selectedMessage.id
+        : messageIds[0];
+    const anchorIndex = messages.findIndex(
+      (message) => message.id === anchorMessageId,
+    );
+    if (anchorIndex === -1) return undefined;
+
+    for (let index = anchorIndex + 1; index < messages.length; index += 1) {
+      if (!removedMessageIds.has(messages[index].id)) {
+        return messages[index].id;
+      }
+    }
+
+    for (let index = anchorIndex - 1; index >= 0; index -= 1) {
+      if (!removedMessageIds.has(messages[index].id)) {
+        return messages[index].id;
+      }
+    }
+
+    return undefined;
+  }
+
   async function deleteSelectedMessages() {
     const messageIds =
       selectedMessageIds.length > 0
@@ -336,6 +369,7 @@
           ? [selectedMessage.id]
           : [];
     if (messageIds.length === 0) return;
+    const nextMessageId = selectMessageAfterRemoval(messageIds);
     if (
       isPermanentDeleteFolder &&
       !window.confirm(
@@ -349,7 +383,7 @@
     await mailApi.deleteMessages(messageIds);
     selectedMessageIds = [];
     await refreshFolders();
-    if (selectedFolderId) await loadMessages(selectedFolderId);
+    if (selectedFolderId) await loadMessages(selectedFolderId, nextMessageId);
   }
 
   function isTextEditingTarget(target: EventTarget | null) {

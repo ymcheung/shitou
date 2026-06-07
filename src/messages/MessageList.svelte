@@ -1,5 +1,6 @@
 <script lang="ts">
   import { CheckCircle2, Paperclip, Trash2 } from "@lucide/svelte";
+  import { onMount, tick } from "svelte";
   import { formatRelative } from "../app/formatting";
   import type {
     Folder,
@@ -7,6 +8,7 @@
     MessageDetail,
     MessageSummary,
   } from "../shared/mail.types";
+  import type { AutoLayout } from "animejs/layout";
 
   let {
     selectedFolder,
@@ -47,6 +49,10 @@
   } = $props();
 
   let selectedMessageIdSet = $derived(new Set(selectedMessageIds));
+  let messageListElement: HTMLDivElement | undefined;
+  let messageLayout: AutoLayout | undefined;
+  let prefersReducedMotion = false;
+  let hasMountedLayout = false;
 
   function handleMessageClick(event: MouseEvent, messageId: string) {
     if (event.metaKey || event.ctrlKey) {
@@ -58,6 +64,59 @@
 
     void onOpenMessage(messageId);
   }
+
+  onMount(() => {
+    const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    prefersReducedMotion = motionQuery.matches;
+
+    const handleMotionChange = (event: MediaQueryListEvent) => {
+      prefersReducedMotion = event.matches;
+    };
+
+    motionQuery.addEventListener("change", handleMotionChange);
+
+    const setupLayout = async () => {
+      if (!messageListElement || prefersReducedMotion) return;
+      const { createLayout } = await import("animejs/layout");
+      messageLayout = createLayout(messageListElement, {
+        children: ".message-list-item",
+        duration: 240,
+        ease: "out(3)",
+        swapAt: { opacity: 1 },
+        enterFrom: {
+          opacity: 0,
+          transform: "translateY(-10px)",
+          duration: 180,
+          ease: "out(2)",
+        },
+        leaveTo: {
+          opacity: 0,
+          transform: "translateY(10px)",
+          duration: 160,
+          ease: "in(2)",
+        },
+      });
+      hasMountedLayout = true;
+    };
+
+    void setupLayout();
+
+    return () => {
+      motionQuery.removeEventListener("change", handleMotionChange);
+      messageLayout?.revert();
+    };
+  });
+
+  $effect.pre(() => {
+    messages;
+    if (!messageLayout || prefersReducedMotion || !hasMountedLayout) return;
+
+    messageLayout.record();
+    void tick().then(() => {
+      if (!messageLayout || prefersReducedMotion) return;
+      messageLayout.animate();
+    });
+  });
 </script>
 
 <section
@@ -129,7 +188,10 @@
     </div>
   </div>
 
-  <div class="mail-scrollbar flex-1 overflow-y-auto">
+  <div
+    class="mail-scrollbar flex-1 overflow-y-auto"
+    bind:this={messageListElement}
+  >
     {#if messages.length === 0}
       <div
         class="grid h-full place-items-center p-8 text-center text-sm font-medium text-zinc-500 dark:text-zinc-400"
@@ -139,7 +201,9 @@
     {:else}
       {#each messages as message (message.id)}
         <div
+          data-layout-id={message.id}
           class={[
+            "message-list-item",
             "flex w-full gap-3 border-b border-zinc-200 p-4 hover:bg-zinc-100 dark:border-zinc-900 dark:hover:bg-zinc-700",
             selectedMessage?.id === message.id
               ? "bg-zinc-50 shadow-sm ring-1 ring-inset ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-700"
