@@ -646,6 +646,30 @@ fn mark_messages_read(
 }
 
 #[tauri::command]
+fn mark_messages_unread(
+    state: tauri::State<AppState>,
+    message_ids: Vec<String>,
+) -> CommandResult<CountResult> {
+    if message_ids.is_empty() {
+        return Ok(CountResult { count: 0 });
+    }
+
+    let conn = state.db.lock().expect("database mutex poisoned");
+    let tx = conn.unchecked_transaction()?;
+    let mut updated = 0;
+    {
+        let mut stmt =
+            tx.prepare("UPDATE messages SET is_unread = 1 WHERE id = ?1 AND is_unread = 0")?;
+        for message_id in &message_ids {
+            updated += stmt.execute(params![message_id])?;
+        }
+    }
+    refresh_folder_unread_counts(&tx)?;
+    tx.commit()?;
+    Ok(CountResult { count: updated })
+}
+
+#[tauri::command]
 fn delete_messages(
     state: tauri::State<AppState>,
     message_ids: Vec<String>,
@@ -690,6 +714,49 @@ fn delete_messages(
                  SELECT trash.id
                  FROM folders trash
                  WHERE trash.account_id = messages.account_id AND lower(trash.name) = 'trash'
+                 LIMIT 1
+               )",
+        )?;
+        for message_id in &message_ids {
+            changed += stmt.execute(params![message_id])?;
+        }
+    }
+    refresh_folder_unread_counts(&tx)?;
+    tx.commit()?;
+    Ok(CountResult { count: changed })
+}
+
+#[tauri::command]
+fn mark_messages_spam(
+    state: tauri::State<AppState>,
+    message_ids: Vec<String>,
+) -> CommandResult<CountResult> {
+    if message_ids.is_empty() {
+        return Ok(CountResult { count: 0 });
+    }
+
+    let conn = state.db.lock().expect("database mutex poisoned");
+    let tx = conn.unchecked_transaction()?;
+    let mut changed = 0;
+    {
+        let mut stmt = tx.prepare(
+            "UPDATE messages
+             SET folder_id = (
+               SELECT spam.id
+               FROM folders spam
+               WHERE spam.account_id = messages.account_id AND lower(spam.name) IN ('spam', 'junk')
+               LIMIT 1
+             )
+             WHERE id = ?1
+               AND EXISTS (
+                 SELECT 1
+                 FROM folders spam
+                 WHERE spam.account_id = messages.account_id AND lower(spam.name) IN ('spam', 'junk')
+               )
+               AND folder_id <> (
+                 SELECT spam.id
+                 FROM folders spam
+                 WHERE spam.account_id = messages.account_id AND lower(spam.name) IN ('spam', 'junk')
                  LIMIT 1
                )",
         )?;
@@ -975,7 +1042,9 @@ pub fn run() {
             list_messages,
             get_message,
             mark_messages_read,
+            mark_messages_unread,
             delete_messages,
+            mark_messages_spam,
             set_theme
         ])
         .run(context)

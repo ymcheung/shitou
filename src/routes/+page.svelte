@@ -331,6 +331,32 @@
     await refreshFolders();
   }
 
+  async function markMessageRead(messageIds: string[]) {
+    if (messageIds.length === 0) return;
+    const messageIdSet = new Set(messageIds);
+    await mailApi.markMessagesRead(messageIds);
+    messages = messages.map((message) =>
+      messageIdSet.has(message.id) ? { ...message, isUnread: false } : message,
+    );
+    if (selectedMessage && messageIdSet.has(selectedMessage.id)) {
+      selectedMessage = { ...selectedMessage, isUnread: false };
+    }
+    await refreshFolders();
+  }
+
+  async function markMessageUnread(messageIds: string[]) {
+    if (messageIds.length === 0) return;
+    const messageIdSet = new Set(messageIds);
+    await mailApi.markMessagesUnread(messageIds);
+    messages = messages.map((message) =>
+      messageIdSet.has(message.id) ? { ...message, isUnread: true } : message,
+    );
+    if (selectedMessage && messageIdSet.has(selectedMessage.id)) {
+      selectedMessage = { ...selectedMessage, isUnread: true };
+    }
+    await refreshFolders();
+  }
+
   function selectMessageAfterRemoval(messageIds: string[]) {
     const removedMessageIds = new Set(messageIds);
     if (selectedMessage && !removedMessageIds.has(selectedMessage.id)) {
@@ -382,6 +408,30 @@
     }
     await mailApi.deleteMessages(messageIds);
     selectedMessageIds = [];
+    await refreshFolders();
+    if (selectedFolderId) await loadMessages(selectedFolderId, nextMessageId);
+  }
+
+  async function moveMessageToTrash(messageIds: string[]) {
+    if (messageIds.length === 0) return;
+    const messageIdSet = new Set(messageIds);
+    const nextMessageId = selectMessageAfterRemoval(messageIds);
+    await mailApi.deleteMessages(messageIds);
+    selectedMessageIds = selectedMessageIds.filter(
+      (id) => !messageIdSet.has(id),
+    );
+    await refreshFolders();
+    if (selectedFolderId) await loadMessages(selectedFolderId, nextMessageId);
+  }
+
+  async function markMessageSpam(messageIds: string[]) {
+    if (messageIds.length === 0) return;
+    const messageIdSet = new Set(messageIds);
+    const nextMessageId = selectMessageAfterRemoval(messageIds);
+    await mailApi.markMessagesSpam(messageIds);
+    selectedMessageIds = selectedMessageIds.filter(
+      (id) => !messageIdSet.has(id),
+    );
     await refreshFolders();
     if (selectedFolderId) await loadMessages(selectedFolderId, nextMessageId);
   }
@@ -764,6 +814,10 @@
         onSelectAllVisible={selectAllVisibleMessages}
         onMarkSelectedRead={markSelectedRead}
         onDeleteSelected={deleteSelectedMessages}
+        onMarkMessageRead={markMessageRead}
+        onMarkMessageUnread={markMessageUnread}
+        onMoveMessageToTrash={moveMessageToTrash}
+        onMarkMessageSpam={markMessageSpam}
         onToggleMessageSelection={toggleMessageSelection}
         onOpenMessage={openMessage}
       />

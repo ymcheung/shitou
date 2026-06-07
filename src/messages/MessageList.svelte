@@ -1,7 +1,15 @@
 <script lang="ts">
-  import { CheckCircle2, Paperclip, Trash2 } from "@lucide/svelte";
+  import {
+    CheckCircle2,
+    Mail,
+    MailOpen,
+    OctagonAlert,
+    Paperclip,
+    Trash2,
+  } from "@lucide/svelte";
   import { onMount, tick } from "svelte";
   import { formatRelative } from "../app/formatting";
+  import * as ContextMenu from "../shared/ui/context-menu/index.js";
   import type {
     Folder,
     MailAccount,
@@ -26,6 +34,10 @@
     onSelectAllVisible,
     onMarkSelectedRead,
     onDeleteSelected,
+    onMarkMessageRead,
+    onMarkMessageUnread,
+    onMoveMessageToTrash,
+    onMarkMessageSpam,
     onToggleMessageSelection,
     onOpenMessage,
   }: {
@@ -44,6 +56,10 @@
     onSelectAllVisible: () => void;
     onMarkSelectedRead: () => void | Promise<void>;
     onDeleteSelected: () => void | Promise<void>;
+    onMarkMessageRead: (messageIds: string[]) => void | Promise<void>;
+    onMarkMessageUnread: (messageIds: string[]) => void | Promise<void>;
+    onMoveMessageToTrash: (messageIds: string[]) => void | Promise<void>;
+    onMarkMessageSpam: (messageIds: string[]) => void | Promise<void>;
     onToggleMessageSelection: (messageId: string) => void;
     onOpenMessage: (messageId: string) => void | Promise<void>;
   } = $props();
@@ -63,6 +79,29 @@
     }
 
     void onOpenMessage(messageId);
+  }
+
+  function isFolderNamed(name: string) {
+    return selectedFolder?.name.toLowerCase() === name;
+  }
+
+  function getContextTargetIds(message: MessageSummary) {
+    return selectionMode && selectedMessageIds.length > 0
+      ? selectedMessageIds
+      : [message.id];
+  }
+
+  function getContextTargetMessages(message: MessageSummary) {
+    const targetIds = new Set(getContextTargetIds(message));
+    return messages.filter((item) => targetIds.has(item.id));
+  }
+
+  function hasUnreadContextTarget(message: MessageSummary) {
+    return getContextTargetMessages(message).some((item) => item.isUnread);
+  }
+
+  function hasReadContextTarget(message: MessageSummary) {
+    return getContextTargetMessages(message).some((item) => !item.isUnread);
   }
 
   onMount(() => {
@@ -200,75 +239,119 @@
       </div>
     {:else}
       {#each messages as message (message.id)}
-        <div
-          data-layout-id={message.id}
-          class={[
-            "message-list-item",
-            "flex w-full gap-3 border-b border-zinc-200 p-4 hover:bg-zinc-100 dark:border-zinc-900 dark:hover:bg-zinc-700",
-            selectedMessage?.id === message.id
-              ? "bg-zinc-50 shadow-sm ring-1 ring-inset ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-700"
-              : "",
-          ]}
-        >
-          <input
-            class={[
-              "mt-1 size-4 shrink-0 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100",
-              selectionMode ? "" : "pointer-events-none opacity-0",
-            ]}
-            type="checkbox"
-            aria-label={`Select ${message.subject}`}
-            aria-hidden={!selectionMode}
-            checked={selectedMessageIdSet.has(message.id)}
-            disabled={!selectionMode}
-            tabindex={selectionMode ? 0 : -1}
-            onchange={() => onToggleMessageSelection(message.id)}
-          />
-          <button
-            class="min-w-0 flex-1 cursor-pointer text-left focus-visible:rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
-            type="button"
-            onclick={(event) => handleMessageClick(event, message.id)}
-          >
-            <div class="flex items-center justify-between gap-3">
-              <span class="flex min-w-0 items-center gap-2">
-                <span
-                  class="size-2 shrink-0 rounded-full"
-                  style:background-color={accountColor(message.accountId)}
-                  title={accountLabel(message.accountId)}
-                ></span>
-                <span
-                  class={[
-                    "truncate text-base",
-                    message.isUnread
-                      ? "font-semibold text-zinc-950 dark:text-white"
-                      : "font-medium text-zinc-700 dark:text-zinc-300",
-                  ]}>{message.subject}</span
-                >
-              </span>
-              <span class="shrink-0 text-xs text-zinc-400"
-                >{formatRelative(message.receivedAt)}</span
-              >
-            </div>
-            <div class="mt-1 flex items-center gap-2">
-              <span
+        <ContextMenu.Root>
+          <ContextMenu.Trigger>
+            {#snippet child({ props })}
+              <div
+                {...props}
+                data-layout-id={message.id}
                 class={[
-                  "truncate text-xs text-zinc-500 dark:text-zinc-400",
-                  message.isUnread ? "font-semibold" : "font-medium",
+                  "message-list-item",
+                  "flex w-full gap-3 border-b border-zinc-200 p-4 hover:bg-zinc-100 dark:border-zinc-900 dark:hover:bg-zinc-700",
+                  selectedMessage?.id === message.id
+                    ? "bg-zinc-50 shadow-sm ring-1 ring-inset ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-700"
+                    : "",
                 ]}
               >
-                {message.sender}
-              </span>
-              {#if message.hasAttachments}<Paperclip
-                  class="shrink-0 text-zinc-400"
-                  size={14}
-                />{/if}
-            </div>
-            <p
-              class="mt-1 line-clamp-2 text-sm leading-5 text-zinc-500 dark:text-zinc-400"
+                <input
+                  class={[
+                    "mt-1 size-4 shrink-0 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100",
+                    selectionMode ? "" : "pointer-events-none opacity-0",
+                  ]}
+                  type="checkbox"
+                  aria-label={`Select ${message.subject}`}
+                  aria-hidden={!selectionMode}
+                  checked={selectedMessageIdSet.has(message.id)}
+                  disabled={!selectionMode}
+                  tabindex={selectionMode ? 0 : -1}
+                  onchange={() => onToggleMessageSelection(message.id)}
+                />
+                <button
+                  class="min-w-0 flex-1 cursor-pointer text-left focus-visible:rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
+                  type="button"
+                  onclick={(event) => handleMessageClick(event, message.id)}
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="flex min-w-0 items-center gap-2">
+                      <span
+                        class="size-2 shrink-0 rounded-full"
+                        style:background-color={accountColor(message.accountId)}
+                        title={accountLabel(message.accountId)}
+                      ></span>
+                      <span
+                        class={[
+                          "truncate text-base",
+                          message.isUnread
+                            ? "font-semibold text-zinc-950 dark:text-white"
+                            : "font-medium text-zinc-700 dark:text-zinc-300",
+                        ]}>{message.subject}</span
+                      >
+                    </span>
+                    <span class="shrink-0 text-xs text-zinc-400"
+                      >{formatRelative(message.receivedAt)}</span
+                    >
+                  </div>
+                  <div class="mt-1 flex items-center gap-2">
+                    <span
+                      class={[
+                        "truncate text-xs text-zinc-500 dark:text-zinc-400",
+                        message.isUnread ? "font-semibold" : "font-medium",
+                      ]}
+                    >
+                      {message.sender}
+                    </span>
+                    {#if message.hasAttachments}<Paperclip
+                        class="shrink-0 text-zinc-400"
+                        size={14}
+                      />{/if}
+                  </div>
+                  <p
+                    class="mt-1 line-clamp-2 text-sm leading-5 text-zinc-500 dark:text-zinc-400"
+                  >
+                    {message.preview}
+                  </p>
+                </button>
+              </div>
+            {/snippet}
+          </ContextMenu.Trigger>
+          <ContextMenu.Content class="w-48">
+            {#if hasUnreadContextTarget(message)}
+              <ContextMenu.Item
+                onSelect={() =>
+                  void onMarkMessageRead(getContextTargetIds(message))}
+              >
+                <MailOpen size={15} />
+                Mark as read
+              </ContextMenu.Item>
+            {/if}
+            {#if hasReadContextTarget(message)}
+              <ContextMenu.Item
+                onSelect={() =>
+                  void onMarkMessageUnread(getContextTargetIds(message))}
+              >
+                <Mail size={15} />
+                Mark as unread
+              </ContextMenu.Item>
+            {/if}
+            <ContextMenu.Separator />
+            <ContextMenu.Item
+              disabled={isPermanentDeleteFolder}
+              onSelect={() =>
+                void onMoveMessageToTrash(getContextTargetIds(message))}
             >
-              {message.preview}
-            </p>
-          </button>
-        </div>
+              <Trash2 size={15} />
+              Move to Trash
+            </ContextMenu.Item>
+            <ContextMenu.Item
+              disabled={isFolderNamed("spam")}
+              onSelect={() =>
+                void onMarkMessageSpam(getContextTargetIds(message))}
+            >
+              <OctagonAlert size={15} />
+              Mark as spam
+            </ContextMenu.Item>
+          </ContextMenu.Content>
+        </ContextMenu.Root>
       {/each}
     {/if}
   </div>
