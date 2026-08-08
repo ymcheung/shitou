@@ -13,8 +13,8 @@ export const demoAccounts: MailAccount[] = [
     provider: "gmail",
     email: "reader@gmail.com",
     displayName: "Gmail",
-    syncStatus: "idle",
-    lastSyncedAt: new Date(Date.now() - 1000 * 60 * 12).toISOString(),
+    syncStatus: "unsupported",
+    lastSyncedAt: null,
   },
   {
     id: "acc-icloud",
@@ -316,9 +316,12 @@ export const demoMailboxClient: MailboxClient = {
     return { removed: true };
   },
   async syncAccount(accountId: string) {
-    return (
-      demoAccounts.find((account) => account.id === accountId) ?? demoAccounts[0]
-    );
+    const account = demoAccounts.find((candidate) => candidate.id === accountId);
+    if (!account) throw new Error("Account not found.");
+    if (account.provider !== "icloud") {
+      throw new Error(`${account.provider} mail sync is not implemented.`);
+    }
+    return account;
   },
   async syncAll() {
     return demoAccounts;

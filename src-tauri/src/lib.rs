@@ -246,6 +246,7 @@ fn oauth_query_parameter(target: &str, name: &str) -> Option<String> {
 mod tests {
     use super::oauth_query_parameter;
     use crate::mailbox::Mailbox;
+    use crate::models::Provider;
 
     #[test]
     fn reads_encoded_oauth_callback_parameters() {
@@ -259,6 +260,15 @@ mod tests {
             Some("expected")
         );
         assert_eq!(oauth_query_parameter(target, "error"), None);
+    }
+
+    #[test]
+    fn rejects_provider_sync_without_an_implementation() {
+        let error = super::ensure_sync_supported(Provider::Gmail).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "unsupported provider: gmail mail sync is not implemented"
+        );
     }
 
     #[test]
@@ -464,7 +474,7 @@ async fn account_connect_provider(
         provider,
         email: token.email,
         display_name,
-        sync_status: "idle".to_string(),
+        sync_status: "unsupported".to_string(),
         last_synced_at: None,
     };
     let mailbox = state.mailbox.lock().expect("database mutex poisoned");
@@ -669,19 +679,26 @@ async fn sync_account(
         let mailbox = state.mailbox.lock().expect("database mutex poisoned");
         mailbox.find_account(&account_id)?.provider
     };
-    if matches!(provider, Provider::Icloud) {
-        let token = icloud_access_token(&account_id)?;
-        let sync = tauri::async_runtime::spawn_blocking(move || {
-            get_icloud_worker::<SyncedMailbox>("sync", &token)
-        })
-        .await
-        .map_err(|error| AppError::Network(error.to_string()))??;
-        let mut mailbox = state.mailbox.lock().expect("database mutex poisoned");
-        mailbox.store_sync(&account_id, sync)?;
-        return mailbox.find_account(&account_id);
+    ensure_sync_supported(provider)?;
+    let token = icloud_access_token(&account_id)?;
+    let sync = tauri::async_runtime::spawn_blocking(move || {
+        get_icloud_worker::<SyncedMailbox>("sync", &token)
+    })
+    .await
+    .map_err(|error| AppError::Network(error.to_string()))??;
+    let mut mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    mailbox.store_sync(&account_id, sync)?;
+    mailbox.find_account(&account_id)
+}
+
+fn ensure_sync_supported(provider: Provider) -> CommandResult<()> {
+    match provider {
+        Provider::Icloud => Ok(()),
+        other => Err(AppError::UnsupportedProvider(format!(
+            "{} mail sync is not implemented",
+            other.as_str()
+        ))),
     }
-    let mailbox = state.mailbox.lock().expect("database mutex poisoned");
-    mailbox.mark_account_synced(&account_id)
 }
 
 #[tauri::command]

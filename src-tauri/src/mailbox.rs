@@ -135,6 +135,10 @@ impl Mailbox {
               created_at TEXT NOT NULL,
               PRIMARY KEY (account_id, provider_message_id)
             );
+
+            UPDATE accounts
+            SET sync_status = 'unsupported', last_synced_at = NULL
+            WHERE provider IN ('gmail', 'outlook');
             "#,
         )?;
         Ok(())
@@ -214,14 +218,6 @@ impl Mailbox {
                 account_from_row,
             )
             .map_err(AppError::from)
-    }
-
-    pub fn mark_account_synced(&self, account_id: &str) -> CommandResult<MailAccount> {
-        self.conn.execute(
-            "UPDATE accounts SET sync_status = 'idle', last_synced_at = ?1 WHERE id = ?2",
-            params![Utc::now().to_rfc3339(), account_id],
-        )?;
-        self.find_account(account_id)
     }
 
     pub fn store_sync(&mut self, account_id: &str, sync: SyncedMailbox) -> CommandResult<()> {

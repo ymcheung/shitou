@@ -13,7 +13,7 @@ export type MailAccount = {
   provider: Provider;
   email: string;
   displayName: string;
-  syncStatus: 'idle' | 'syncing' | 'offline' | 'error';
+  syncStatus: 'idle' | 'syncing' | 'offline' | 'error' | 'unsupported';
   lastSyncedAt: string | null;
 };
 
