@@ -11,7 +11,13 @@
   } from "../accounts/account-colors";
   import { providerLabels } from "../accounts/provider";
   import { applyTheme } from "../app/theme";
-  import { api, demoApi } from "$lib/tauri";
+  import {
+    authClient,
+    createDemoSession,
+    demoMailboxClient,
+    desktopMailboxClient,
+    settingsClient,
+  } from "$lib/tauri";
   import {
     buildRootFolders,
     isPermanentDeleteFolder as folderAllowsPermanentDelete,
@@ -100,7 +106,9 @@
   let mailGridColumns = $derived(
     `${accountPanelWidth}px ${panelHandleWidth}px ${messageListWidth}px ${panelHandleWidth}px minmax(${minMessagePanelWidth}px, 1fr)`,
   );
-  let mailApi = $derived(isDemoMode ? demoApi : api);
+  let mailApi = $derived(
+    isDemoMode ? demoMailboxClient : desktopMailboxClient,
+  );
 
   $effect(() => {
     applyTheme(theme);
@@ -130,7 +138,7 @@
 
   async function restoreSession() {
     try {
-      const restoredSession = await api.authCurrentSession();
+      const restoredSession = await authClient.currentSession();
       if (restoredSession?.authenticated) {
         session = restoredSession;
         isDemoMode = false;
@@ -153,7 +161,7 @@
     authError = "";
 
     try {
-      await api.authSendEmailOtp(email);
+      await authClient.sendEmailOtp(email);
       otpSent = true;
       otp = "";
     } catch (error) {
@@ -173,7 +181,7 @@
     authError = "";
 
     try {
-      session = await api.authVerifyEmailOtp(email, otp);
+      session = await authClient.verifyEmailOtp(email, otp);
       isDemoMode = false;
       isSignedIn = true;
       await loadMailbox();
@@ -192,7 +200,7 @@
     authError = "";
 
     try {
-      session = await demoApi.authCompleteDemo();
+      session = createDemoSession();
       isDemoMode = true;
       isSignedIn = true;
       accountPanelOpen = false;
@@ -569,7 +577,7 @@
 
   async function changeTheme(nextTheme: ThemeMode) {
     theme = nextTheme;
-    await api.setTheme(nextTheme);
+    await settingsClient.setTheme(nextTheme);
   }
 
   function openSettings(tab: "general" | "accounts" | "advanced" = "general") {
@@ -598,7 +606,7 @@
   }
 
   async function logout() {
-    await api.authLogout();
+    if (!isDemoMode) await authClient.logout();
     clearSessionState();
   }
 
@@ -614,7 +622,7 @@
     ) {
       return;
     }
-    await api.authLogout();
+    if (!isDemoMode) await authClient.logout();
     clearSessionState();
   }
 

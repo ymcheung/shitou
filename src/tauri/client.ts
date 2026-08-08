@@ -8,137 +8,104 @@ import type {
   Provider,
   ThemeMode,
 } from "../shared/mail.types";
-import { demoAccounts, demoMailbox } from "./demo-mailbox";
+
+type InvokeCommand = <T>(
+  command: string,
+  args?: Record<string, unknown>,
+) => Promise<T>;
+
+export type MailboxClient = {
+  connectProvider(provider: Exclude<Provider, "icloud">): Promise<MailAccount>;
+  connectIcloud(email: string, appPassword: string): Promise<MailAccount>;
+  removeAccount(accountId: string): Promise<{ removed: boolean }>;
+  syncAccount(accountId: string): Promise<MailAccount>;
+  syncAll(): Promise<MailAccount[]>;
+  listAccounts(): Promise<MailAccount[]>;
+  listFolders(accountId: string): Promise<Folder[]>;
+  listMessages(folderId: string, query?: string): Promise<MessageSummary[]>;
+  getMessage(messageId: string): Promise<MessageDetail>;
+  markMessagesRead(messageIds: string[]): Promise<{ count: number }>;
+  markMessagesUnread(messageIds: string[]): Promise<{ count: number }>;
+  deleteMessages(messageIds: string[]): Promise<{ count: number }>;
+  markMessagesSpam(messageIds: string[]): Promise<{ count: number }>;
+};
 
 const canInvoke =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 async function call<T>(
+  invokeCommand: InvokeCommand,
   command: string,
   args?: Record<string, unknown>,
-  fallback?: T,
 ): Promise<T> {
-  if (canInvoke) {
-    try {
-      return await invoke<T>(command, args);
-    } catch (error) {
-      throw new Error(String(error));
-    }
+  try {
+    return await invokeCommand<T>(command, args);
+  } catch (error) {
+    throw new Error(String(error));
   }
-
-  if (fallback !== undefined) return fallback;
-  throw new Error(
-    `Tauri command ${command} is unavailable outside the desktop shell.`,
-  );
 }
 
-export const api = {
-  authSendEmailOtp: (email: string) =>
-    call<{ sent: boolean; email: string }>("auth_send_email_otp", { email }),
-  authCurrentSession: () =>
-    call<AuthSession | null>("auth_current_session", undefined, null),
-  authVerifyEmailOtp: (email: string, otp: string) =>
-    call<AuthSession>("auth_verify_email_otp", { email, otp }),
-  authLogout: () =>
-    call<{ removed: boolean }>("auth_logout", undefined, { removed: true }),
-  connectProvider: (provider: Exclude<Provider, "icloud">) =>
-    call<MailAccount>(
-      "account_connect_provider",
-      { provider },
-      demoMailbox.connectProviderFallback(provider),
-    ),
-  connectIcloud: (email: string, appPassword: string) =>
-    call<MailAccount>("account_connect_icloud", { email, appPassword }),
-  removeAccount: (accountId: string) =>
-    call<{ removed: boolean }>(
-      "account_remove",
-      { accountId },
-      { removed: true },
-    ),
-  syncAccount: (accountId: string) =>
-    call<MailAccount>(
-      "sync_account",
-      { accountId },
-      demoAccounts.find((account) => account.id === accountId) ??
-        demoAccounts[0],
-    ),
-  syncAll: () => call<MailAccount[]>("sync_all", undefined, demoAccounts),
-  listAccounts: () =>
-    call<MailAccount[]>("list_accounts", undefined, demoAccounts),
-  listFolders: (accountId: string) =>
-    call<Folder[]>(
-      "list_folders",
-      { accountId },
-      demoMailbox.listFolders(accountId),
-    ),
-  listMessages: (folderId: string, query = "") =>
-    call<MessageSummary[]>(
-      "list_messages",
-      { folderId, query },
-      demoMailbox.listMessages(folderId, query),
-    ),
-  getMessage: (messageId: string) =>
-    call<MessageDetail>(
-      "get_message",
-      { messageId },
-      demoMailbox.getMessage(messageId),
-    ),
-  markMessagesRead: (messageIds: string[]) =>
-    call<{ count: number }>(
-      "mark_messages_read",
-      { messageIds },
-      demoMailbox.markMessagesRead(messageIds),
-    ),
-  markMessagesUnread: (messageIds: string[]) =>
-    call<{ count: number }>(
-      "mark_messages_unread",
-      { messageIds },
-      demoMailbox.markMessagesUnread(messageIds),
-    ),
-  deleteMessages: (messageIds: string[]) =>
-    call<{ count: number }>(
-      "delete_messages",
-      { messageIds },
-      demoMailbox.deleteMessages(messageIds),
-    ),
-  markMessagesSpam: (messageIds: string[]) =>
-    call<{ count: number }>(
-      "mark_messages_spam",
-      { messageIds },
-      demoMailbox.markMessagesSpam(messageIds),
-    ),
-  setTheme: (mode: ThemeMode) =>
-    call<{ mode: ThemeMode }>("set_theme", { mode }, { mode }),
+export function createDesktopMailboxClient(
+  invokeCommand: InvokeCommand = invoke,
+): MailboxClient {
+  return {
+    connectProvider: (provider) =>
+      call<MailAccount>(invokeCommand, "account_connect_provider", { provider }),
+    connectIcloud: (email, appPassword) =>
+      call<MailAccount>(invokeCommand, "account_connect_icloud", {
+        email,
+        appPassword,
+      }),
+    removeAccount: (accountId) =>
+      call(invokeCommand, "account_remove", { accountId }),
+    syncAccount: (accountId) =>
+      call(invokeCommand, "sync_account", { accountId }),
+    syncAll: () => call(invokeCommand, "sync_all"),
+    listAccounts: () => call(invokeCommand, "list_accounts"),
+    listFolders: (accountId) =>
+      call(invokeCommand, "list_folders", { accountId }),
+    listMessages: (folderId, query = "") =>
+      call(invokeCommand, "list_messages", { folderId, query }),
+    getMessage: (messageId) =>
+      call(invokeCommand, "get_message", { messageId }),
+    markMessagesRead: (messageIds) =>
+      call(invokeCommand, "mark_messages_read", { messageIds }),
+    markMessagesUnread: (messageIds) =>
+      call(invokeCommand, "mark_messages_unread", { messageIds }),
+    deleteMessages: (messageIds) =>
+      call(invokeCommand, "delete_messages", { messageIds }),
+    markMessagesSpam: (messageIds) =>
+      call(invokeCommand, "mark_messages_spam", { messageIds }),
+  };
+}
+
+export const desktopMailboxClient = createDesktopMailboxClient();
+
+export const authClient = {
+  sendEmailOtp: (email: string) =>
+    call<{ sent: boolean; email: string }>(invoke, "auth_send_email_otp", {
+      email,
+    }),
+  currentSession: () =>
+    canInvoke
+      ? call<AuthSession | null>(invoke, "auth_current_session")
+      : Promise.resolve(null),
+  verifyEmailOtp: (email: string, otp: string) =>
+    call<AuthSession>(invoke, "auth_verify_email_otp", { email, otp }),
+  logout: () => call<{ removed: boolean }>(invoke, "auth_logout"),
 };
 
-export const demoApi = {
-  authCompleteDemo: async (): Promise<AuthSession> => ({
+export const settingsClient = {
+  setTheme: (mode: ThemeMode) =>
+    canInvoke
+      ? call<{ mode: ThemeMode }>(invoke, "set_theme", { mode })
+      : Promise.resolve({ mode }),
+};
+
+export function createDemoSession(): AuthSession {
+  return {
     authenticated: true,
     email: "demo.reader@shitou.local",
     userId: "demo-user",
-  }),
-  connectProvider: async (_provider: Exclude<Provider, "icloud">) => {
-    throw new Error("Adding accounts is unavailable in demo mode.");
-  },
-  connectIcloud: async (_email: string, _appPassword: string) => {
-    throw new Error("Adding accounts is unavailable in demo mode.");
-  },
-  removeAccount: async (_accountId: string) => ({ removed: true }),
-  syncAccount: async (accountId: string) =>
-    demoAccounts.find((account) => account.id === accountId) ?? demoAccounts[0],
-  syncAll: async () => demoAccounts,
-  listAccounts: async () => demoAccounts,
-  listFolders: async (accountId: string) => demoMailbox.listFolders(accountId),
-  listMessages: async (folderId: string, query = "") =>
-    demoMailbox.listMessages(folderId, query),
-  getMessage: async (messageId: string) => demoMailbox.getMessage(messageId),
-  markMessagesRead: async (messageIds: string[]) =>
-    demoMailbox.markMessagesRead(messageIds),
-  markMessagesUnread: async (messageIds: string[]) =>
-    demoMailbox.markMessagesUnread(messageIds),
-  deleteMessages: async (messageIds: string[]) =>
-    demoMailbox.deleteMessages(messageIds),
-  markMessagesSpam: async (messageIds: string[]) =>
-    demoMailbox.markMessagesSpam(messageIds),
-  setTheme: (mode: ThemeMode) => api.setTheme(mode),
-};
+  };
+}

@@ -3,7 +3,9 @@ import type {
   MailAccount,
   MessageDetail,
   MessageSummary,
+  Provider,
 } from "../shared/mail.types";
+import type { MailboxClient } from "./client";
 
 export const demoAccounts: MailAccount[] = [
   {
@@ -207,21 +209,6 @@ function refreshDemoUnreadCounts() {
 }
 
 export const demoMailbox = {
-  connectProviderFallback(provider: Provider): MailAccount {
-    return {
-      id: `acc-${Date.now()}`,
-      provider,
-      email: `reader@${provider === "outlook" ? "outlook.com" : `${provider}.com`}`,
-      displayName:
-        provider === "gmail"
-          ? "Gmail"
-          : provider === "outlook"
-            ? "Outlook"
-            : "iCloud Mail",
-      syncStatus: "idle",
-      lastSyncedAt: null,
-    };
-  },
   listFolders(accountId: string) {
     return demoFolders.filter((folder) => folder.accountId === accountId);
   },
@@ -315,5 +302,49 @@ export const demoMailbox = {
     }
     refreshDemoUnreadCounts();
     return { count };
+  },
+};
+
+export const demoMailboxClient: MailboxClient = {
+  async connectProvider(_provider: Exclude<Provider, "icloud">) {
+    throw new Error("Adding accounts is unavailable in demo mode.");
+  },
+  async connectIcloud(_email: string, _appPassword: string) {
+    throw new Error("Adding accounts is unavailable in demo mode.");
+  },
+  async removeAccount(_accountId: string) {
+    return { removed: true };
+  },
+  async syncAccount(accountId: string) {
+    return (
+      demoAccounts.find((account) => account.id === accountId) ?? demoAccounts[0]
+    );
+  },
+  async syncAll() {
+    return demoAccounts;
+  },
+  async listAccounts() {
+    return demoAccounts;
+  },
+  async listFolders(accountId: string) {
+    return demoMailbox.listFolders(accountId);
+  },
+  async listMessages(folderId: string, query = "") {
+    return demoMailbox.listMessages(folderId, query);
+  },
+  async getMessage(messageId: string) {
+    return demoMailbox.getMessage(messageId);
+  },
+  async markMessagesRead(messageIds: string[]) {
+    return demoMailbox.markMessagesRead(messageIds);
+  },
+  async markMessagesUnread(messageIds: string[]) {
+    return demoMailbox.markMessagesUnread(messageIds);
+  },
+  async deleteMessages(messageIds: string[]) {
+    return demoMailbox.deleteMessages(messageIds);
+  },
+  async markMessagesSpam(messageIds: string[]) {
+    return demoMailbox.markMessagesSpam(messageIds);
   },
 };
