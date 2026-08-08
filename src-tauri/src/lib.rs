@@ -1,17 +1,17 @@
 mod error;
+mod mailbox;
 mod models;
 mod state;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use chrono::{DateTime, Utc};
 use error::{AppError, CommandResult};
+use mailbox::{Mailbox, SyncedMailbox, SyncedMessageBody};
 use models::{
-    Attachment, AuthSession, AuthStartResult, CountResult, Folder, MailAccount, MessageDetail,
-    MessageSummary, Provider, Removed, ThemeResult,
+    AuthSession, AuthStartResult, CountResult, Folder, MailAccount, MessageDetail, MessageSummary,
+    Provider, Removed, ThemeResult,
 };
 use reqwest::blocking::Client;
 use reqwest::StatusCode;
-use rusqlite::{params, Connection, OptionalExtension};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -55,42 +55,6 @@ struct NylasGrantResponse {
     grant_id: String,
     email: String,
     access_token: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct IcloudFolder {
-    id: String,
-    name: String,
-    unread_count: i64,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct IcloudMessage {
-    id: String,
-    folder_id: String,
-    sender: String,
-    recipients: Vec<String>,
-    subject: String,
-    preview: String,
-    received_at: String,
-    has_attachments: bool,
-    is_unread: bool,
-}
-
-#[derive(Deserialize)]
-struct IcloudSyncResponse {
-    folders: Vec<IcloudFolder>,
-    messages: Vec<IcloudMessage>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct IcloudMessageResponse {
-    body_html: String,
-    body_text: String,
-    attachments: Vec<Attachment>,
 }
 
 fn neon_auth_url(path: &str) -> CommandResult<String> {
@@ -171,16 +135,6 @@ fn auth_response_user(auth_response: &Value, fallback_email: &str) -> AuthSessio
     }
 }
 
-fn save_auth_session(conn: &Connection, session: &AuthSession) -> CommandResult<()> {
-    let value =
-        serde_json::to_string(session).map_err(|error| AppError::Auth(error.to_string()))?;
-    conn.execute(
-        "INSERT INTO local_settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        params![AUTH_SESSION_SETTING_KEY, value],
-    )?;
-    Ok(())
-}
-
 fn app_db_path(app: &AppHandle) -> CommandResult<PathBuf> {
     let mut dir = app
         .path()
@@ -189,83 +143,6 @@ fn app_db_path(app: &AppHandle) -> CommandResult<PathBuf> {
     std::fs::create_dir_all(&dir).map_err(|_| AppError::AppDataDirUnavailable)?;
     dir.push("mailbox.sqlite3");
     Ok(dir)
-}
-
-fn init_database(path: PathBuf) -> CommandResult<Connection> {
-    let conn = Connection::open(path)?;
-    let mailbox_key = mailbox_encryption_key()?;
-    conn.pragma_update(None, "key", mailbox_key)?;
-    conn.execute_batch(
-        r#"
-        PRAGMA foreign_keys = ON;
-        PRAGMA journal_mode = WAL;
-
-        CREATE TABLE IF NOT EXISTS accounts (
-          id TEXT PRIMARY KEY,
-          provider TEXT NOT NULL CHECK (provider IN ('gmail', 'outlook', 'icloud')),
-          email TEXT NOT NULL,
-          display_name TEXT NOT NULL,
-          sync_status TEXT NOT NULL DEFAULT 'idle',
-          last_synced_at TEXT
-        );
-
-        CREATE TABLE IF NOT EXISTS folders (
-          id TEXT PRIMARY KEY,
-          account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-          name TEXT NOT NULL,
-          unread_count INTEGER NOT NULL DEFAULT 0
-        );
-
-        CREATE TABLE IF NOT EXISTS messages (
-          id TEXT PRIMARY KEY,
-          folder_id TEXT NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
-          account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-          provider_message_id TEXT NOT NULL,
-          sender TEXT NOT NULL,
-          recipients_json TEXT NOT NULL,
-          subject TEXT NOT NULL,
-          preview TEXT NOT NULL,
-          received_at TEXT NOT NULL,
-          has_attachments INTEGER NOT NULL DEFAULT 0,
-          is_unread INTEGER NOT NULL DEFAULT 0
-        );
-
-        CREATE TABLE IF NOT EXISTS message_bodies (
-          message_id TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
-          body_html TEXT NOT NULL,
-          body_text TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS attachments (
-          id TEXT PRIMARY KEY,
-          message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
-          file_name TEXT NOT NULL,
-          mime_type TEXT NOT NULL,
-          byte_size INTEGER NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS sync_state (
-          account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
-          cursor TEXT,
-          updated_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS local_settings (
-          key TEXT PRIMARY KEY,
-          value TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS pending_mail_actions (
-          account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-          provider_message_id TEXT NOT NULL,
-          action TEXT NOT NULL CHECK (action IN ('trash', 'delete')),
-          created_at TEXT NOT NULL,
-          PRIMARY KEY (account_id, provider_message_id)
-        );
-        "#,
-    )?;
-    remove_demo_seed_data(&conn)?;
-    Ok(conn)
 }
 
 fn mailbox_encryption_key() -> CommandResult<String> {
@@ -279,191 +156,6 @@ fn mailbox_encryption_key() -> CommandResult<String> {
         }
         Err(error) => Err(AppError::Keychain(error)),
     }
-}
-
-fn remove_demo_seed_data(conn: &Connection) -> CommandResult<()> {
-    conn.execute(
-        "DELETE FROM accounts
-         WHERE (id = 'acc-gmail' AND email = 'reader@gmail.com')
-            OR (id = 'acc-icloud' AND email = 'reader@icloud.com')",
-        [],
-    )?;
-    Ok(())
-}
-
-#[allow(dead_code)]
-fn seed_demo_data(conn: &Connection) -> CommandResult<()> {
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM accounts", [], |row| row.get(0))?;
-    if count > 0 {
-        return Ok(());
-    }
-
-    let now = Utc::now();
-    conn.execute(
-        "INSERT INTO accounts (id, provider, email, display_name, sync_status, last_synced_at) VALUES (?1, 'gmail', ?2, 'Gmail', 'idle', ?3)",
-        params!["acc-gmail", "reader@gmail.com", now.to_rfc3339()],
-    )?;
-    conn.execute(
-        "INSERT INTO accounts (id, provider, email, display_name, sync_status, last_synced_at) VALUES (?1, 'icloud', ?2, 'iCloud Mail', 'offline', ?3)",
-        params!["acc-icloud", "reader@icloud.com", now.to_rfc3339()],
-    )?;
-    conn.execute_batch(
-        "INSERT INTO folders (id, account_id, name, unread_count) VALUES ('inbox', 'acc-gmail', 'Inbox', 1);
-         INSERT INTO folders (id, account_id, name, unread_count) VALUES ('archive', 'acc-gmail', 'Archive', 0);
-         INSERT INTO folders (id, account_id, name, unread_count) VALUES ('trash', 'acc-gmail', 'Trash', 0);
-         INSERT INTO folders (id, account_id, name, unread_count) VALUES ('spam', 'acc-gmail', 'Spam', 1);
-         INSERT INTO folders (id, account_id, name, unread_count) VALUES ('icloud-inbox', 'acc-icloud', 'Inbox', 1);
-         INSERT INTO folders (id, account_id, name, unread_count) VALUES ('icloud-trash', 'acc-icloud', 'Trash', 0);
-         INSERT INTO folders (id, account_id, name, unread_count) VALUES ('icloud-spam', 'acc-icloud', 'Spam', 0);",
-    )?;
-
-    insert_message(
-        conn,
-        "msg-1",
-        "inbox",
-        "acc-gmail",
-        "gmail:msg-1",
-        "Gmail API",
-        &["reader@gmail.com"],
-        "Read-only scope accepted",
-        "This account uses gmail.readonly and stores offline bodies locally on this Mac.",
-        true,
-        false,
-        "<p>This account uses <code>gmail.readonly</code> and stores offline bodies locally on this Mac.</p><div class=\"signature\"><p>Alex Morgan<br>Platform Integrations<br>Gmail API</p></div>",
-        "This account uses gmail.readonly and stores offline bodies locally on this Mac.\n\nAlex Morgan\nPlatform Integrations\nGmail API",
-    )?;
-    insert_message(
-        conn,
-        "msg-2",
-        "icloud-inbox",
-        "acc-icloud",
-        "imap:uid-301",
-        "iCloud Mail",
-        &["reader@icloud.com"],
-        "IMAP sync cached",
-        "iCloud reads over IMAP with an app-specific password stored in Keychain.",
-        true,
-        false,
-        "<p>iCloud reads over IMAP with an app-specific password stored in Keychain. SMTP is not configured in v1.</p><div class=\"signature\"><p>Mina Park<br>Mailbox Operations<br>iCloud Mail</p></div>",
-        "iCloud reads over IMAP with an app-specific password stored in Keychain. SMTP is not configured in v1.\n\nMina Park\nMailbox Operations\niCloud Mail",
-    )?;
-    insert_message(
-        conn,
-        "msg-3",
-        "spam",
-        "acc-gmail",
-        "gmail:msg-3",
-        "Security Notice",
-        &["reader@gmail.com"],
-        "Untrusted sender quarantined",
-        "This demo message appears in the aggregate spam folder.",
-        true,
-        false,
-        "<p>This demo message appears in the aggregate spam folder.</p>",
-        "This demo message appears in the aggregate spam folder.",
-    )?;
-    insert_message(
-        conn,
-        "msg-4",
-        "inbox",
-        "acc-gmail",
-        "gmail:msg-4",
-        "Design Review",
-        &["reader@gmail.com"],
-        "Signature samples attached",
-        "Attached are the signature samples for testing cached attachment metadata.",
-        false,
-        true,
-        "<p>Attached are two signature samples for the demo mailbox.</p><p>The HTML version uses a normal text signature so we can compare it with image-heavy signatures separately.</p><div class=\"signature\"><p>Jordan Lee<br>Design Systems<br>Shitou Mail</p></div>",
-        "Attached are two signature samples for the demo mailbox. The HTML version uses a normal text signature so we can compare it with image-heavy signatures separately.\n\nJordan Lee\nDesign Systems\nShitou Mail",
-    )?;
-    insert_attachment(
-        conn,
-        "att-2",
-        "msg-4",
-        "signature-samples.pdf",
-        "application/pdf",
-        482_176,
-    )?;
-    insert_attachment(
-        conn,
-        "att-3",
-        "msg-4",
-        "brand-footer.png",
-        "image/png",
-        128_904,
-    )?;
-    insert_message(
-        conn,
-        "msg-5",
-        "icloud-inbox",
-        "acc-icloud",
-        "imap:uid-302",
-        "Northstar Labs",
-        &["reader@icloud.com"],
-        "Logo signature rendering check",
-        "This message includes images inside the signature block.",
-        false,
-        false,
-        "<p>Please confirm the reader keeps inline signature images visible in the offline body cache.</p><div class=\"signature\"><p><img alt=\"Northstar Labs mark\" width=\"36\" height=\"36\" src=\"data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2236%22%20height=%2236%22%20viewBox=%220%200%2036%2036%22%3E%3Crect%20width=%2236%22%20height=%2236%22%20rx=%228%22%20fill=%22%2318181b%22/%3E%3Cpath%20d=%22M18%206l3.2%208.8L30%2018l-8.8%203.2L18%2030l-3.2-8.8L6%2018l8.8-3.2L18%206z%22%20fill=%22%23facc15%22/%3E%3C/svg%3E\"></p><p>Avery Chen<br>Northstar Labs</p><p><img alt=\"Certified offline badge\" width=\"96\" height=\"24\" src=\"data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2296%22%20height=%2224%22%20viewBox=%220%200%2096%2024%22%3E%3Crect%20width=%2296%22%20height=%2224%22%20rx=%2212%22%20fill=%22%23ecfeff%22/%3E%3Ctext%20x=%2212%22%20y=%2216%22%20font-family=%22Arial%22%20font-size=%2210%22%20font-weight=%22700%22%20fill=%22%230e7490%22%3EOFFLINE%20READY%3C/text%3E%3C/svg%3E\"></p></div>",
-        "Please confirm the reader keeps inline signature images visible in the offline body cache.\n\nAvery Chen\nNorthstar Labs",
-    )?;
-    Ok(())
-}
-
-#[allow(dead_code, clippy::too_many_arguments)]
-fn insert_message(
-    conn: &Connection,
-    id: &str,
-    folder_id: &str,
-    account_id: &str,
-    provider_message_id: &str,
-    sender: &str,
-    recipients: &[&str],
-    subject: &str,
-    preview: &str,
-    is_unread: bool,
-    has_attachments: bool,
-    body_html: &str,
-    body_text: &str,
-) -> CommandResult<()> {
-    conn.execute(
-        "INSERT INTO messages (id, folder_id, account_id, provider_message_id, sender, recipients_json, subject, preview, received_at, has_attachments, is_unread) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-        params![
-            id,
-            folder_id,
-            account_id,
-            provider_message_id,
-            sender,
-            serde_json::to_string(recipients).unwrap_or_else(|_| "[]".to_string()),
-            subject,
-            preview,
-            Utc::now().to_rfc3339(),
-            if has_attachments { 1_i64 } else { 0_i64 },
-            if is_unread { 1_i64 } else { 0_i64 }
-        ],
-    )?;
-    conn.execute(
-        "INSERT INTO message_bodies (message_id, body_html, body_text) VALUES (?1, ?2, ?3)",
-        params![id, body_html, body_text],
-    )?;
-    Ok(())
-}
-
-#[allow(dead_code)]
-fn insert_attachment(
-    conn: &Connection,
-    id: &str,
-    message_id: &str,
-    file_name: &str,
-    mime_type: &str,
-    byte_size: i64,
-) -> CommandResult<()> {
-    conn.execute(
-        "INSERT INTO attachments (id, message_id, file_name, mime_type, byte_size) VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![id, message_id, file_name, mime_type, byte_size],
-    )?;
-    Ok(())
 }
 
 #[tauri::command]
@@ -483,14 +175,8 @@ fn auth_send_email_otp(email: String) -> CommandResult<AuthStartResult> {
 
 #[tauri::command]
 fn auth_current_session(state: tauri::State<AppState>) -> CommandResult<Option<AuthSession>> {
-    let conn = state.db.lock().expect("database mutex poisoned");
-    let value = conn
-        .query_row(
-            "SELECT value FROM local_settings WHERE key = ?1",
-            params![AUTH_SESSION_SETTING_KEY],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()?;
+    let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    let value = mailbox.setting(AUTH_SESSION_SETTING_KEY)?;
 
     value
         .map(|raw| {
@@ -523,18 +209,18 @@ fn auth_verify_email_otp(
         json!({ "email": email, "otp": otp.trim() }),
     )?;
     let session = auth_response_user(&auth_response, &email);
-    let conn = state.db.lock().expect("database mutex poisoned");
-    save_auth_session(&conn, &session)?;
+    let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    mailbox.set_setting(
+        AUTH_SESSION_SETTING_KEY,
+        &serde_json::to_string(&session).map_err(|error| AppError::Auth(error.to_string()))?,
+    )?;
     Ok(session)
 }
 
 #[tauri::command]
 fn auth_logout(state: tauri::State<AppState>) -> CommandResult<Removed> {
-    let conn = state.db.lock().expect("database mutex poisoned");
-    conn.execute(
-        "DELETE FROM local_settings WHERE key = ?1",
-        params![AUTH_SESSION_SETTING_KEY],
-    )?;
+    let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    mailbox.remove_setting(AUTH_SESSION_SETTING_KEY)?;
     Ok(Removed { removed: true })
 }
 
@@ -558,8 +244,8 @@ fn oauth_query_parameter(target: &str, name: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{oauth_query_parameter, queue_message_deletions};
-    use rusqlite::Connection;
+    use super::oauth_query_parameter;
+    use crate::mailbox::Mailbox;
 
     #[test]
     fn reads_encoded_oauth_callback_parameters() {
@@ -577,40 +263,20 @@ mod tests {
 
     #[test]
     fn queues_remote_delete_and_moves_local_message_first() {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE accounts (id TEXT PRIMARY KEY, provider TEXT NOT NULL);
-             CREATE TABLE folders (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, name TEXT NOT NULL, unread_count INTEGER NOT NULL);
-             CREATE TABLE messages (id TEXT PRIMARY KEY, folder_id TEXT NOT NULL, account_id TEXT NOT NULL, provider_message_id TEXT NOT NULL, is_unread INTEGER NOT NULL);
-             CREATE TABLE pending_mail_actions (account_id TEXT NOT NULL, provider_message_id TEXT NOT NULL, action TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (account_id, provider_message_id));
-             INSERT INTO accounts VALUES ('account-1', 'icloud');
-             INSERT INTO folders VALUES ('inbox', 'account-1', 'Inbox', 1);
-             INSERT INTO folders VALUES ('trash', 'account-1', 'Deleted Messages', 0);
-             INSERT INTO messages VALUES ('local-1', 'inbox', 'account-1', 'remote-1', 1);",
-        )
-        .unwrap();
+        let mut mailbox = Mailbox::in_memory().unwrap();
+        mailbox.seed_deletion_example().unwrap();
 
         assert_eq!(
-            queue_message_deletions(&conn, &["local-1".to_string()]).unwrap(),
+            mailbox.delete_messages(&["local-1".to_string()]).unwrap(),
             1
         );
         assert_eq!(
-            conn.query_row(
-                "SELECT folder_id FROM messages WHERE id = 'local-1'",
-                [],
-                |row| row.get::<_, String>(0),
-            )
-            .unwrap(),
-            "trash"
+            mailbox.message_folder("local-1").unwrap().as_deref(),
+            Some("trash")
         );
         assert_eq!(
-            conn.query_row(
-                "SELECT action FROM pending_mail_actions WHERE provider_message_id = 'remote-1'",
-                [],
-                |row| row.get::<_, String>(0),
-            )
-            .unwrap(),
-            "trash"
+            mailbox.pending_action("remote-1").unwrap().as_deref(),
+            Some("trash")
         );
     }
 }
@@ -801,19 +467,8 @@ async fn account_connect_provider(
         sync_status: "idle".to_string(),
         last_synced_at: None,
     };
-    let conn = state.db.lock().expect("database mutex poisoned");
-    let inserted = conn.execute(
-        "INSERT INTO accounts (id, provider, email, display_name, sync_status)
-         VALUES (?1, ?2, ?3, ?4, 'idle')
-         ON CONFLICT(id) DO UPDATE SET email = excluded.email, display_name = excluded.display_name, sync_status = 'idle'",
-        params![
-            account.id,
-            account.provider.as_str(),
-            account.email,
-            account.display_name
-        ],
-    );
-    if let Err(error) = inserted {
+    let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    if let Err(error) = mailbox.upsert_account(&account) {
         for prefix in ["nylas-access", "nylas-refresh"] {
             if let Ok(entry) =
                 keyring::Entry::new(SERVICE_NAME, &format!("{prefix}:{}", account.id))
@@ -927,36 +582,19 @@ fn flush_pending_mail_actions(app: &AppHandle) {
         return;
     };
     let pending = {
-        let conn = state.db.lock().expect("database mutex poisoned");
-        let Ok(mut stmt) = conn.prepare(
-            "SELECT account_id, provider_message_id, action
-             FROM pending_mail_actions
-             ORDER BY created_at",
-        ) else {
+        let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+        let Ok(actions) = mailbox.pending_actions() else {
             return;
         };
-        let Ok(rows) = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-            ))
-        }) else {
-            return;
-        };
-        rows.filter_map(Result::ok).collect::<Vec<_>>()
+        actions
     };
 
     for (account_id, message_id, action) in pending {
         let result = icloud_access_token(&account_id)
             .and_then(|token| apply_icloud_message_action(&message_id, &action, &token));
         if result.is_ok() {
-            let conn = state.db.lock().expect("database mutex poisoned");
-            let _ = conn.execute(
-                "DELETE FROM pending_mail_actions
-                 WHERE account_id = ?1 AND provider_message_id = ?2 AND action = ?3",
-                params![account_id, message_id, action],
-            );
+            let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+            let _ = mailbox.complete_pending_action(&account_id, &message_id, &action);
         }
     }
 }
@@ -993,14 +631,8 @@ async fn account_connect_icloud(
     };
     keyring::Entry::new(SERVICE_NAME, &format!("icloud-access:{}", account.id))?
         .set_password(&grant.access_token)?;
-    let conn = state.db.lock().expect("database mutex poisoned");
-    let inserted = conn.execute(
-        "INSERT INTO accounts (id, provider, email, display_name, sync_status)
-         VALUES (?1, 'icloud', ?2, ?3, 'idle')
-         ON CONFLICT(id) DO UPDATE SET email = excluded.email, display_name = excluded.display_name, sync_status = 'idle'",
-        params![account.id, account.email, account.display_name],
-    );
-    if let Err(error) = inserted {
+    let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    if let Err(error) = mailbox.upsert_account(&account) {
         let _ = keyring::Entry::new(SERVICE_NAME, &format!("icloud-access:{}", account.id))?
             .delete_credential();
         return Err(error.into());
@@ -1010,9 +642,9 @@ async fn account_connect_icloud(
 
 #[tauri::command]
 fn account_remove(state: tauri::State<AppState>, account_id: String) -> CommandResult<Removed> {
-    let conn = state.db.lock().expect("database mutex poisoned");
-    conn.execute("DELETE FROM accounts WHERE id = ?1", params![account_id])?;
-    drop(conn);
+    let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    mailbox.remove_account(&account_id)?;
+    drop(mailbox);
 
     for key in [
         format!("nylas-access:{account_id}"),
@@ -1028,144 +660,62 @@ fn account_remove(state: tauri::State<AppState>, account_id: String) -> CommandR
     Ok(Removed { removed: true })
 }
 
-fn store_icloud_sync(
-    conn: &Connection,
-    account_id: &str,
-    sync: IcloudSyncResponse,
-) -> CommandResult<()> {
-    if sync.folders.is_empty() {
-        return Err(AppError::Auth(
-            "iCloud folders are not ready yet; Nylas can take a few minutes after connection"
-                .to_string(),
-        ));
-    }
-    let tx = conn.unchecked_transaction()?;
-    tx.execute(
-        "DELETE FROM folders WHERE account_id = ?1",
-        params![account_id],
-    )?;
-    for folder in &sync.folders {
-        tx.execute(
-            "INSERT INTO folders (id, account_id, name, unread_count) VALUES (?1, ?2, ?3, ?4)",
-            params![
-                format!("{account_id}:{}", folder.id),
-                account_id,
-                folder.name,
-                folder.unread_count
-            ],
-        )?;
-    }
-    for message in sync.messages {
-        if !sync
-            .folders
-            .iter()
-            .any(|folder| folder.id == message.folder_id)
-        {
-            continue;
-        }
-        let message_id = format!("{account_id}:{}", message.id);
-        tx.execute(
-            "INSERT INTO messages (id, folder_id, account_id, provider_message_id, sender, recipients_json, subject, preview, received_at, has_attachments, is_unread) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-            params![
-                message_id,
-                format!("{account_id}:{}", message.folder_id),
-                account_id,
-                message.id,
-                message.sender,
-                serde_json::to_string(&message.recipients).unwrap_or_else(|_| "[]".to_string()),
-                message.subject,
-                message.preview,
-                message.received_at,
-                if message.has_attachments { 1_i64 } else { 0_i64 },
-                if message.is_unread { 1_i64 } else { 0_i64 },
-            ],
-        )?;
-        tx.execute(
-            "INSERT INTO message_bodies (message_id, body_html, body_text) VALUES (?1, '', '')",
-            params![message_id],
-        )?;
-    }
-    apply_pending_mail_actions(&tx)?;
-    refresh_folder_unread_counts(&tx)?;
-    tx.execute(
-        "UPDATE accounts SET sync_status = 'idle', last_synced_at = ?1 WHERE id = ?2",
-        params![Utc::now().to_rfc3339(), account_id],
-    )?;
-    tx.commit()?;
-    Ok(())
-}
-
 #[tauri::command]
 async fn sync_account(
     state: tauri::State<'_, AppState>,
     account_id: String,
 ) -> CommandResult<MailAccount> {
     let provider = {
-        let conn = state.db.lock().expect("database mutex poisoned");
-        find_account(&conn, &account_id)?.provider
+        let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+        mailbox.find_account(&account_id)?.provider
     };
     if matches!(provider, Provider::Icloud) {
         let token = icloud_access_token(&account_id)?;
         let sync = tauri::async_runtime::spawn_blocking(move || {
-            get_icloud_worker::<IcloudSyncResponse>("sync", &token)
+            get_icloud_worker::<SyncedMailbox>("sync", &token)
         })
         .await
         .map_err(|error| AppError::Network(error.to_string()))??;
-        let conn = state.db.lock().expect("database mutex poisoned");
-        store_icloud_sync(&conn, &account_id, sync)?;
-        return find_account(&conn, &account_id);
+        let mut mailbox = state.mailbox.lock().expect("database mutex poisoned");
+        mailbox.store_sync(&account_id, sync)?;
+        return mailbox.find_account(&account_id);
     }
-    let conn = state.db.lock().expect("database mutex poisoned");
-    conn.execute(
-        "UPDATE accounts SET sync_status = 'idle', last_synced_at = ?1 WHERE id = ?2",
-        params![Utc::now().to_rfc3339(), account_id],
-    )?;
-    find_account(&conn, &account_id)
+    let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    mailbox.mark_account_synced(&account_id)
 }
 
 #[tauri::command]
 async fn sync_all(state: tauri::State<'_, AppState>) -> CommandResult<Vec<MailAccount>> {
     let accounts = {
-        let conn = state.db.lock().expect("database mutex poisoned");
-        list_accounts_from_db(&conn)?
+        let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+        mailbox.list_accounts()?
     };
     for account in accounts {
         if matches!(account.provider, Provider::Icloud) {
             let token = icloud_access_token(&account.id)?;
             let sync = tauri::async_runtime::spawn_blocking(move || {
-                get_icloud_worker::<IcloudSyncResponse>("sync", &token)
+                get_icloud_worker::<SyncedMailbox>("sync", &token)
             })
             .await
             .map_err(|error| AppError::Network(error.to_string()))??;
-            let conn = state.db.lock().expect("database mutex poisoned");
-            store_icloud_sync(&conn, &account.id, sync)?;
+            let mut mailbox = state.mailbox.lock().expect("database mutex poisoned");
+            mailbox.store_sync(&account.id, sync)?;
         }
     }
-    let conn = state.db.lock().expect("database mutex poisoned");
-    list_accounts_from_db(&conn)
+    let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    mailbox.list_accounts()
 }
 
 #[tauri::command]
 fn list_accounts(state: tauri::State<AppState>) -> CommandResult<Vec<MailAccount>> {
-    let conn = state.db.lock().expect("database mutex poisoned");
-    list_accounts_from_db(&conn)
+    let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    mailbox.list_accounts()
 }
 
 #[tauri::command]
 fn list_folders(state: tauri::State<AppState>, account_id: String) -> CommandResult<Vec<Folder>> {
-    let conn = state.db.lock().expect("database mutex poisoned");
-    let mut stmt = conn.prepare("SELECT id, account_id, name, unread_count FROM folders WHERE account_id = ?1 ORDER BY name = 'Inbox' DESC, name ASC")?;
-    let folders = stmt
-        .query_map(params![account_id], |row| {
-            Ok(Folder {
-                id: row.get(0)?,
-                account_id: row.get(1)?,
-                name: row.get(2)?,
-                unread_count: row.get(3)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(folders)
+    let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    mailbox.list_folders(&account_id)
 }
 
 #[tauri::command]
@@ -1174,38 +724,8 @@ fn list_messages(
     folder_id: String,
     query: String,
 ) -> CommandResult<Vec<MessageSummary>> {
-    let conn = state.db.lock().expect("database mutex poisoned");
-    let pattern = format!("%{}%", query);
-    let messages = if let Some(folder_names) = aggregate_folder_names(&folder_id) {
-        let mut stmt = conn.prepare(&format!(
-            "SELECT m.id, m.folder_id, m.account_id, m.provider_message_id, m.sender, m.recipients_json, m.subject, m.preview, m.received_at, m.has_attachments, m.is_unread
-             FROM messages m
-             JOIN folders f ON f.id = m.folder_id
-             WHERE lower(f.name) IN ({folder_names}) AND (?1 = '%%' OR m.sender LIKE ?1 OR m.subject LIKE ?1 OR m.preview LIKE ?1)
-             ORDER BY m.received_at DESC",
-        ))?;
-        let rows = stmt.query_map(params![pattern], row_to_message_summary)?;
-        rows.collect::<Result<Vec<_>, _>>()?
-    } else {
-        let mut stmt = conn.prepare(
-            "SELECT id, folder_id, account_id, provider_message_id, sender, recipients_json, subject, preview, received_at, has_attachments, is_unread
-             FROM messages
-             WHERE folder_id = ?1 AND (?2 = '%%' OR sender LIKE ?2 OR subject LIKE ?2 OR preview LIKE ?2)
-             ORDER BY received_at DESC",
-        )?;
-        let rows = stmt.query_map(params![folder_id, pattern], row_to_message_summary)?;
-        rows.collect::<Result<Vec<_>, _>>()?
-    };
-    Ok(messages)
-}
-
-fn aggregate_folder_names(folder_id: &str) -> Option<&'static str> {
-    match folder_id {
-        "root:inbox" => Some("'inbox'"),
-        "root:trash" => Some("'trash', 'deleted messages', '刪除的郵件'"),
-        "root:spam" => Some("'spam', 'junk', '垃圾郵件'"),
-        _ => None,
-    }
+    let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    mailbox.list_messages(&folder_id, &query)
 }
 
 #[tauri::command]
@@ -1217,18 +737,8 @@ fn mark_messages_read(
         return Ok(CountResult { count: 0 });
     }
 
-    let conn = state.db.lock().expect("database mutex poisoned");
-    let tx = conn.unchecked_transaction()?;
-    let mut updated = 0;
-    {
-        let mut stmt =
-            tx.prepare("UPDATE messages SET is_unread = 0 WHERE id = ?1 AND is_unread = 1")?;
-        for message_id in &message_ids {
-            updated += stmt.execute(params![message_id])?;
-        }
-    }
-    refresh_folder_unread_counts(&tx)?;
-    tx.commit()?;
+    let mut mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    let updated = mailbox.mark_messages_read(&message_ids, false)?;
     Ok(CountResult { count: updated })
 }
 
@@ -1241,121 +751,9 @@ fn mark_messages_unread(
         return Ok(CountResult { count: 0 });
     }
 
-    let conn = state.db.lock().expect("database mutex poisoned");
-    let tx = conn.unchecked_transaction()?;
-    let mut updated = 0;
-    {
-        let mut stmt =
-            tx.prepare("UPDATE messages SET is_unread = 1 WHERE id = ?1 AND is_unread = 0")?;
-        for message_id in &message_ids {
-            updated += stmt.execute(params![message_id])?;
-        }
-    }
-    refresh_folder_unread_counts(&tx)?;
-    tx.commit()?;
+    let mut mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    let updated = mailbox.mark_messages_read(&message_ids, true)?;
     Ok(CountResult { count: updated })
-}
-
-fn apply_pending_mail_actions(conn: &Connection) -> CommandResult<()> {
-    conn.execute(
-        "UPDATE messages
-         SET folder_id = (
-           SELECT trash.id FROM folders trash
-           WHERE trash.account_id = messages.account_id
-             AND lower(trash.name) IN ('trash', 'deleted messages', '刪除的郵件')
-           LIMIT 1
-         )
-         WHERE EXISTS (
-           SELECT 1 FROM pending_mail_actions pending
-           WHERE pending.account_id = messages.account_id
-             AND pending.provider_message_id = messages.provider_message_id
-             AND pending.action = 'trash'
-         )
-           AND EXISTS (
-             SELECT 1 FROM folders trash
-             WHERE trash.account_id = messages.account_id
-               AND lower(trash.name) IN ('trash', 'deleted messages', '刪除的郵件')
-           )",
-        [],
-    )?;
-    conn.execute(
-        "DELETE FROM messages
-         WHERE EXISTS (
-           SELECT 1 FROM pending_mail_actions pending
-           WHERE pending.account_id = messages.account_id
-             AND pending.provider_message_id = messages.provider_message_id
-             AND pending.action = 'delete'
-         )",
-        [],
-    )?;
-    Ok(())
-}
-
-fn queue_message_deletions(conn: &Connection, message_ids: &[String]) -> CommandResult<usize> {
-    let tx = conn.unchecked_transaction()?;
-    let mut changed = 0;
-    for message_id in message_ids {
-        let target = tx
-            .query_row(
-                "SELECT m.account_id, m.provider_message_id, a.provider,
-                        lower(f.name) IN ('trash', 'deleted messages', '刪除的郵件')
-                 FROM messages m
-                 JOIN accounts a ON a.id = m.account_id
-                 JOIN folders f ON f.id = m.folder_id
-                 WHERE m.id = ?1",
-                params![message_id],
-                |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                        row.get::<_, bool>(3)?,
-                    ))
-                },
-            )
-            .optional()?;
-        let Some((account_id, provider_message_id, provider, in_trash)) = target else {
-            continue;
-        };
-        if provider == "icloud" {
-            tx.execute(
-                "INSERT INTO pending_mail_actions
-                   (account_id, provider_message_id, action, created_at)
-                 VALUES (?1, ?2, ?3, ?4)
-                 ON CONFLICT(account_id, provider_message_id)
-                 DO UPDATE SET action = excluded.action, created_at = excluded.created_at",
-                params![
-                    account_id,
-                    provider_message_id,
-                    if in_trash { "delete" } else { "trash" },
-                    Utc::now().to_rfc3339(),
-                ],
-            )?;
-        }
-        changed += if in_trash {
-            tx.execute("DELETE FROM messages WHERE id = ?1", params![message_id])?
-        } else {
-            tx.execute(
-                "UPDATE messages
-                 SET folder_id = (
-                   SELECT id FROM folders
-                   WHERE account_id = ?1
-                     AND lower(name) IN ('trash', 'deleted messages', '刪除的郵件')
-                   LIMIT 1
-                 )
-                 WHERE id = ?2
-                   AND EXISTS (
-                     SELECT 1 FROM folders
-                     WHERE account_id = ?1
-                       AND lower(name) IN ('trash', 'deleted messages', '刪除的郵件')
-                   )",
-                params![account_id, message_id],
-            )?
-        };
-    }
-    refresh_folder_unread_counts(&tx)?;
-    tx.commit()?;
-    Ok(changed)
 }
 
 #[tauri::command]
@@ -1368,9 +766,9 @@ fn delete_messages(
         return Ok(CountResult { count: 0 });
     }
 
-    let conn = state.db.lock().expect("database mutex poisoned");
-    let changed = queue_message_deletions(&conn, &message_ids)?;
-    drop(conn);
+    let mut mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    let changed = mailbox.delete_messages(&message_ids)?;
+    drop(mailbox);
     thread::spawn(move || flush_pending_mail_actions(&app));
     Ok(CountResult { count: changed })
 }
@@ -1384,82 +782,9 @@ fn mark_messages_spam(
         return Ok(CountResult { count: 0 });
     }
 
-    let conn = state.db.lock().expect("database mutex poisoned");
-    let tx = conn.unchecked_transaction()?;
-    let mut changed = 0;
-    {
-        let mut stmt = tx.prepare(
-            "UPDATE messages
-             SET folder_id = (
-               SELECT spam.id
-               FROM folders spam
-               WHERE spam.account_id = messages.account_id AND lower(spam.name) IN ('spam', 'junk')
-               LIMIT 1
-             )
-             WHERE id = ?1
-               AND EXISTS (
-                 SELECT 1
-                 FROM folders spam
-                 WHERE spam.account_id = messages.account_id AND lower(spam.name) IN ('spam', 'junk')
-               )
-               AND folder_id <> (
-                 SELECT spam.id
-                 FROM folders spam
-                 WHERE spam.account_id = messages.account_id AND lower(spam.name) IN ('spam', 'junk')
-                 LIMIT 1
-               )",
-        )?;
-        for message_id in &message_ids {
-            changed += stmt.execute(params![message_id])?;
-        }
-    }
-    refresh_folder_unread_counts(&tx)?;
-    tx.commit()?;
+    let mut mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    let changed = mailbox.mark_messages_spam(&message_ids)?;
     Ok(CountResult { count: changed })
-}
-
-fn refresh_folder_unread_counts(conn: &Connection) -> CommandResult<()> {
-    conn.execute(
-        "UPDATE folders
-         SET unread_count = (
-           SELECT COUNT(*)
-           FROM messages
-           WHERE messages.folder_id = folders.id AND messages.is_unread = 1
-         )",
-        [],
-    )?;
-    Ok(())
-}
-
-fn get_message_from_db(conn: &Connection, message_id: &str) -> CommandResult<MessageDetail> {
-    let summary = conn.query_row(
-        "SELECT id, folder_id, account_id, provider_message_id, sender, recipients_json, subject, preview, received_at, has_attachments, is_unread FROM messages WHERE id = ?1",
-        params![message_id],
-        row_to_message_summary,
-    )?;
-    let (body_html, body_text): (String, String) = conn.query_row(
-        "SELECT body_html, body_text FROM message_bodies WHERE message_id = ?1",
-        params![summary.id],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    )?;
-    let mut stmt = conn.prepare("SELECT id, file_name, mime_type, byte_size FROM attachments WHERE message_id = ?1 ORDER BY file_name ASC")?;
-    let attachments = stmt
-        .query_map(params![summary.id], |row| {
-            Ok(Attachment {
-                id: row.get(0)?,
-                file_name: row.get(1)?,
-                mime_type: row.get(2)?,
-                byte_size: row.get(3)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-
-    Ok(MessageDetail {
-        summary,
-        body_html,
-        body_text,
-        attachments,
-    })
 }
 
 #[tauri::command]
@@ -1468,16 +793,16 @@ async fn get_message(
     message_id: String,
 ) -> CommandResult<MessageDetail> {
     let detail = {
-        let conn = state.db.lock().expect("database mutex poisoned");
-        get_message_from_db(&conn, &message_id)?
+        let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+        mailbox.get_message(&message_id)?
     };
     if !detail.body_html.is_empty() || !detail.body_text.is_empty() {
         return Ok(detail);
     }
 
     let provider = {
-        let conn = state.db.lock().expect("database mutex poisoned");
-        find_account(&conn, &detail.summary.account_id)?.provider
+        let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+        mailbox.find_account(&detail.summary.account_id)?.provider
     };
     if !matches!(provider, Provider::Icloud) {
         return Ok(detail);
@@ -1489,29 +814,13 @@ async fn get_message(
         urlencoding::encode(&detail.summary.provider_message_id)
     );
     let remote = tauri::async_runtime::spawn_blocking(move || {
-        get_icloud_worker::<IcloudMessageResponse>(&path, &token)
+        get_icloud_worker::<SyncedMessageBody>(&path, &token)
     })
     .await
     .map_err(|error| AppError::Network(error.to_string()))??;
 
-    let conn = state.db.lock().expect("database mutex poisoned");
-    let tx = conn.unchecked_transaction()?;
-    tx.execute(
-        "UPDATE message_bodies SET body_html = ?1, body_text = ?2 WHERE message_id = ?3",
-        params![remote.body_html, remote.body_text, message_id],
-    )?;
-    tx.execute(
-        "DELETE FROM attachments WHERE message_id = ?1",
-        params![message_id],
-    )?;
-    for attachment in remote.attachments {
-        tx.execute(
-            "INSERT INTO attachments (id, message_id, file_name, mime_type, byte_size) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![format!("{message_id}:{}", attachment.id), message_id, attachment.file_name, attachment.mime_type, attachment.byte_size],
-        )?;
-    }
-    tx.commit()?;
-    get_message_from_db(&conn, &message_id)
+    let mut mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    mailbox.cache_message_body(&message_id, remote)
 }
 
 #[tauri::command]
@@ -1522,77 +831,9 @@ fn set_theme(state: tauri::State<AppState>, mode: String) -> CommandResult<Theme
         ));
     }
 
-    let conn = state.db.lock().expect("database mutex poisoned");
-    conn.execute(
-        "INSERT INTO local_settings (key, value) VALUES ('theme', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        params![mode],
-    )?;
+    let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    mailbox.set_setting("theme", &mode)?;
     Ok(ThemeResult { mode })
-}
-
-fn list_accounts_from_db(conn: &Connection) -> CommandResult<Vec<MailAccount>> {
-    let mut stmt = conn.prepare("SELECT id, provider, email, display_name, sync_status, last_synced_at FROM accounts ORDER BY provider, email")?;
-    let accounts = stmt
-        .query_map([], |row| {
-            let provider: String = row.get(1)?;
-            let last_synced_at: Option<String> = row.get(5)?;
-            Ok(MailAccount {
-                id: row.get(0)?,
-                provider: Provider::from_input(&provider)
-                    .map_err(|_| rusqlite::Error::InvalidQuery)?,
-                email: row.get(2)?,
-                display_name: row.get(3)?,
-                sync_status: row.get(4)?,
-                last_synced_at: last_synced_at
-                    .and_then(|value| DateTime::parse_from_rfc3339(&value).ok())
-                    .map(|value| value.with_timezone(&Utc)),
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(accounts)
-}
-
-fn find_account(conn: &Connection, account_id: &str) -> CommandResult<MailAccount> {
-    conn.query_row(
-        "SELECT id, provider, email, display_name, sync_status, last_synced_at FROM accounts WHERE id = ?1",
-        params![account_id],
-        |row| {
-            let provider: String = row.get(1)?;
-            let last_synced_at: Option<String> = row.get(5)?;
-            Ok(MailAccount {
-                id: row.get(0)?,
-                provider: Provider::from_input(&provider).map_err(|_| rusqlite::Error::InvalidQuery)?,
-                email: row.get(2)?,
-                display_name: row.get(3)?,
-                sync_status: row.get(4)?,
-                last_synced_at: last_synced_at
-                    .and_then(|value| DateTime::parse_from_rfc3339(&value).ok())
-                    .map(|value| value.with_timezone(&Utc)),
-            })
-        },
-    )
-    .map_err(AppError::from)
-}
-
-fn row_to_message_summary(row: &rusqlite::Row<'_>) -> rusqlite::Result<MessageSummary> {
-    let recipients_json: String = row.get(5)?;
-    let received_at: String = row.get(8)?;
-    Ok(MessageSummary {
-        id: row.get(0)?,
-        folder_id: row.get(1)?,
-        account_id: row.get(2)?,
-        provider_message_id: row.get(3)?,
-        sender: row.get(4)?,
-        sender_avatar_url: None,
-        recipients: serde_json::from_str(&recipients_json).unwrap_or_default(),
-        subject: row.get(6)?,
-        preview: row.get(7)?,
-        received_at: DateTime::parse_from_rfc3339(&received_at)
-            .map(|value| value.with_timezone(&Utc))
-            .unwrap_or_else(|_| Utc::now()),
-        has_attachments: row.get::<_, i64>(9)? == 1,
-        is_unread: row.get::<_, i64>(10)? == 1,
-    })
 }
 
 fn app_menu<R: tauri::Runtime>(app_handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
@@ -1722,9 +963,9 @@ pub fn run() {
         })
         .setup(|app| {
             let db_path = app_db_path(&app.handle())?;
-            let db = init_database(db_path)?;
+            let mailbox = Mailbox::open(db_path, mailbox_encryption_key()?)?;
             app.manage(AppState {
-                db: Mutex::new(db),
+                mailbox: Mutex::new(mailbox),
                 outbox: Mutex::new(()),
             });
             let app_handle = app.handle().clone();

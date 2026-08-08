@@ -1,8 +1,8 @@
 use std::sync::Mutex;
 
-use rusqlite::Connection;
+use crate::mailbox::Mailbox;
 
 pub struct AppState {
-    pub db: Mutex<Connection>,
+    pub mailbox: Mutex<Mailbox>,
     pub outbox: Mutex<()>,
 }
