@@ -1,6 +1,5 @@
 export {
   authClient,
-  createDemoSession,
   desktopMailboxClient,
   settingsClient,
   type MailboxClient,

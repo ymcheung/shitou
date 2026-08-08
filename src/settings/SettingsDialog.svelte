@@ -36,6 +36,7 @@
     id: Provider;
     label: string;
     description: string;
+    icon: typeof GoogleLogoIcon;
   }> = [
     {
       id: "gmail",

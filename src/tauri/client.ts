@@ -101,11 +101,3 @@ export const settingsClient = {
       ? call<{ mode: ThemeMode }>(invoke, "set_theme", { mode })
       : Promise.resolve({ mode }),
 };
-
-export function createDemoSession(): AuthSession {
-  return {
-    authenticated: true,
-    email: "demo.reader@shitou.local",
-    userId: "demo-user",
-  };
-}

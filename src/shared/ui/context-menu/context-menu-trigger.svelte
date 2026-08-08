@@ -1,21 +1,16 @@
 <script lang="ts">
   import { ContextMenu as ContextMenuPrimitive } from "bits-ui";
-  import type { Snippet } from "svelte";
-  import type { WithoutChildrenOrChild } from "$shared/utils.js";
 
   let {
     ref = $bindable(null),
-    children,
+    child,
     ...restProps
-  }: WithoutChildrenOrChild<ContextMenuPrimitive.TriggerProps> & {
-    children?: Snippet;
-  } = $props();
+  }: ContextMenuPrimitive.TriggerProps = $props();
 </script>
 
 <ContextMenuPrimitive.Trigger
   bind:ref
+  {child}
   data-slot="context-menu-trigger"
   {...restProps}
->
-  {@render children?.()}
-</ContextMenuPrimitive.Trigger>
+/>
