@@ -1,3 +1,5 @@
+use reqwest::StatusCode;
+use serde_json::Value;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -30,3 +32,22 @@ impl serde::Serialize for AppError {
 }
 
 pub type CommandResult<T> = Result<T, AppError>;
+
+pub fn response_error_message(service: &str, status: StatusCode, body: &str) -> String {
+    let fallback = format!("{service} request failed with HTTP {status}");
+    let Ok(value) = serde_json::from_str::<Value>(body) else {
+        return if body.trim().is_empty() {
+            fallback
+        } else {
+            format!("{fallback}: {}", body.trim())
+        };
+    };
+
+    value
+        .pointer("/error/message")
+        .or_else(|| value.pointer("/message"))
+        .or_else(|| value.pointer("/error"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or(fallback)
+}

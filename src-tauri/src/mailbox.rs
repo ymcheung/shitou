@@ -1,11 +1,25 @@
 use std::path::PathBuf;
+use std::thread;
 
 use chrono::{DateTime, Utc};
+use reqwest::blocking::Client;
 use rusqlite::{params, Connection, OptionalExtension};
+use serde::de::DeserializeOwned;
 use serde::Deserialize;
+use tauri::{AppHandle, Manager};
 
-use crate::error::{AppError, CommandResult};
-use crate::models::{Attachment, Folder, MailAccount, MessageDetail, MessageSummary, Provider};
+use crate::accounts::icloud_access_token;
+use crate::error::{response_error_message, AppError, CommandResult};
+use crate::models::{
+    Attachment, CountResult, Folder, MailAccount, MessageDetail, MessageSummary, Provider,
+    ThemeResult,
+};
+use crate::state::AppState;
+
+const SERVICE_NAME: &str = "com.shitou.mail";
+const MAILBOX_KEY_ACCOUNT: &str = "local-mailbox-sqlcipher-key";
+const DEFAULT_ICLOUD_CONNECT_URL: &str =
+    "https://shitou-icloud-connect.shitou-mail-cloud.workers.dev/icloud/connect";
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -48,7 +62,21 @@ pub struct Mailbox {
 }
 
 impl Mailbox {
-    pub fn open(path: PathBuf, key: String) -> CommandResult<Self> {
+    pub fn open_app(path: PathBuf) -> CommandResult<Self> {
+        let entry = keyring::Entry::new(SERVICE_NAME, MAILBOX_KEY_ACCOUNT)?;
+        let key = match entry.get_password() {
+            Ok(key) => key,
+            Err(keyring::Error::NoEntry) => {
+                let key = uuid::Uuid::new_v4().to_string();
+                entry.set_password(&key)?;
+                key
+            }
+            Err(error) => return Err(AppError::Keychain(error)),
+        };
+        Self::open(path, key)
+    }
+
+    fn open(path: PathBuf, key: String) -> CommandResult<Self> {
         let mailbox = Self {
             conn: Connection::open(path)?,
         };
@@ -205,7 +233,7 @@ impl Mailbox {
     pub fn list_accounts(&self) -> CommandResult<Vec<MailAccount>> {
         let mut stmt = self.conn.prepare("SELECT id, provider, email, display_name, sync_status, last_synced_at FROM accounts ORDER BY provider, email")?;
         let accounts = stmt
-            .query_map([], |row| account_from_row(row))?
+            .query_map([], account_from_row)?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(accounts)
     }
@@ -556,6 +584,277 @@ impl Mailbox {
     }
 }
 
+fn icloud_worker_url(path: &str) -> String {
+    let connect_url = std::env::var("ICLOUD_CONNECT_URL")
+        .unwrap_or_else(|_| DEFAULT_ICLOUD_CONNECT_URL.to_string());
+    format!(
+        "{}/icloud/{}",
+        connect_url
+            .trim_end_matches('/')
+            .trim_end_matches("/icloud/connect"),
+        path.trim_start_matches('/')
+    )
+}
+
+fn get_icloud_worker<T: DeserializeOwned>(path: &str, access_token: &str) -> CommandResult<T> {
+    let response = Client::new()
+        .get(icloud_worker_url(path))
+        .bearer_auth(access_token)
+        .send()
+        .map_err(|error| AppError::Network(error.to_string()))?;
+    let status = response.status();
+    let body = response
+        .text()
+        .map_err(|error| AppError::Network(error.to_string()))?;
+    if !status.is_success() {
+        return Err(AppError::Auth(response_error_message(
+            "iCloud connector",
+            status,
+            &body,
+        )));
+    }
+    serde_json::from_str(&body).map_err(|error| AppError::Auth(error.to_string()))
+}
+
+fn apply_icloud_message_action(
+    message_id: &str,
+    action: &str,
+    access_token: &str,
+) -> CommandResult<()> {
+    let hard_delete = if action == "delete" { "?hard=true" } else { "" };
+    let response = Client::new()
+        .delete(icloud_worker_url(&format!(
+            "messages/{}{}",
+            urlencoding::encode(message_id),
+            hard_delete,
+        )))
+        .bearer_auth(access_token)
+        .send()
+        .map_err(|error| AppError::Network(error.to_string()))?;
+    let status = response.status();
+    let body = response
+        .text()
+        .map_err(|error| AppError::Network(error.to_string()))?;
+    if status.is_success() {
+        Ok(())
+    } else {
+        Err(AppError::Auth(response_error_message(
+            "iCloud connector",
+            status,
+            &body,
+        )))
+    }
+}
+
+pub(crate) fn flush_pending_mail_actions(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let Ok(_outbox) = state.outbox.try_lock() else {
+        return;
+    };
+    let pending = {
+        let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+        let Ok(actions) = mailbox.pending_actions() else {
+            return;
+        };
+        actions
+    };
+
+    for (account_id, message_id, action) in pending {
+        let result = icloud_access_token(&account_id)
+            .and_then(|token| apply_icloud_message_action(&message_id, &action, &token));
+        if result.is_ok() {
+            let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+            let _ = mailbox.complete_pending_action(&account_id, &message_id, &action);
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn sync_account(
+    state: tauri::State<'_, AppState>,
+    account_id: String,
+) -> CommandResult<MailAccount> {
+    let provider = {
+        let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+        mailbox.find_account(&account_id)?.provider
+    };
+    ensure_sync_supported(provider)?;
+    let token = icloud_access_token(&account_id)?;
+    let sync = tauri::async_runtime::spawn_blocking(move || {
+        get_icloud_worker::<SyncedMailbox>("sync", &token)
+    })
+    .await
+    .map_err(|error| AppError::Network(error.to_string()))??;
+    let mut mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    mailbox.store_sync(&account_id, sync)?;
+    mailbox.find_account(&account_id)
+}
+
+fn ensure_sync_supported(provider: Provider) -> CommandResult<()> {
+    match provider {
+        Provider::Icloud => Ok(()),
+        other => Err(AppError::UnsupportedProvider(format!(
+            "{} mail sync is not implemented",
+            other.as_str()
+        ))),
+    }
+}
+
+#[tauri::command]
+pub async fn sync_all(state: tauri::State<'_, AppState>) -> CommandResult<Vec<MailAccount>> {
+    let accounts = {
+        let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+        mailbox.list_accounts()?
+    };
+    for account in accounts {
+        if matches!(account.provider, Provider::Icloud) {
+            let token = icloud_access_token(&account.id)?;
+            let sync = tauri::async_runtime::spawn_blocking(move || {
+                get_icloud_worker::<SyncedMailbox>("sync", &token)
+            })
+            .await
+            .map_err(|error| AppError::Network(error.to_string()))??;
+            let mut mailbox = state.mailbox.lock().expect("database mutex poisoned");
+            mailbox.store_sync(&account.id, sync)?;
+        }
+    }
+    let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    mailbox.list_accounts()
+}
+
+#[tauri::command]
+pub fn list_accounts(state: tauri::State<AppState>) -> CommandResult<Vec<MailAccount>> {
+    let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    mailbox.list_accounts()
+}
+
+#[tauri::command]
+pub fn list_folders(
+    state: tauri::State<AppState>,
+    account_id: String,
+) -> CommandResult<Vec<Folder>> {
+    let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    mailbox.list_folders(&account_id)
+}
+
+#[tauri::command]
+pub fn list_messages(
+    state: tauri::State<AppState>,
+    folder_id: String,
+    query: String,
+) -> CommandResult<Vec<MessageSummary>> {
+    let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    mailbox.list_messages(&folder_id, &query)
+}
+
+#[tauri::command]
+pub fn mark_messages_read(
+    state: tauri::State<AppState>,
+    message_ids: Vec<String>,
+) -> CommandResult<CountResult> {
+    if message_ids.is_empty() {
+        return Ok(CountResult { count: 0 });
+    }
+
+    let mut mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    let updated = mailbox.mark_messages_read(&message_ids, false)?;
+    Ok(CountResult { count: updated })
+}
+
+#[tauri::command]
+pub fn mark_messages_unread(
+    state: tauri::State<AppState>,
+    message_ids: Vec<String>,
+) -> CommandResult<CountResult> {
+    if message_ids.is_empty() {
+        return Ok(CountResult { count: 0 });
+    }
+
+    let mut mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    let updated = mailbox.mark_messages_read(&message_ids, true)?;
+    Ok(CountResult { count: updated })
+}
+
+#[tauri::command]
+pub fn delete_messages(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    message_ids: Vec<String>,
+) -> CommandResult<CountResult> {
+    if message_ids.is_empty() {
+        return Ok(CountResult { count: 0 });
+    }
+
+    let mut mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    let changed = mailbox.delete_messages(&message_ids)?;
+    drop(mailbox);
+    thread::spawn(move || flush_pending_mail_actions(&app));
+    Ok(CountResult { count: changed })
+}
+
+#[tauri::command]
+pub fn mark_messages_spam(
+    state: tauri::State<AppState>,
+    message_ids: Vec<String>,
+) -> CommandResult<CountResult> {
+    if message_ids.is_empty() {
+        return Ok(CountResult { count: 0 });
+    }
+
+    let mut mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    let changed = mailbox.mark_messages_spam(&message_ids)?;
+    Ok(CountResult { count: changed })
+}
+
+#[tauri::command]
+pub async fn get_message(
+    state: tauri::State<'_, AppState>,
+    message_id: String,
+) -> CommandResult<MessageDetail> {
+    let detail = {
+        let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+        mailbox.get_message(&message_id)?
+    };
+    if !detail.body_html.is_empty() || !detail.body_text.is_empty() {
+        return Ok(detail);
+    }
+
+    let provider = {
+        let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+        mailbox.find_account(&detail.summary.account_id)?.provider
+    };
+    if !matches!(provider, Provider::Icloud) {
+        return Ok(detail);
+    }
+
+    let token = icloud_access_token(&detail.summary.account_id)?;
+    let path = format!(
+        "messages/{}",
+        urlencoding::encode(&detail.summary.provider_message_id)
+    );
+    let remote = tauri::async_runtime::spawn_blocking(move || {
+        get_icloud_worker::<SyncedMessageBody>(&path, &token)
+    })
+    .await
+    .map_err(|error| AppError::Network(error.to_string()))??;
+
+    let mut mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    mailbox.cache_message_body(&message_id, remote)
+}
+
+#[tauri::command]
+pub fn set_theme(state: tauri::State<AppState>, mode: String) -> CommandResult<ThemeResult> {
+    if !matches!(mode.as_str(), "system" | "light" | "dark") {
+        return Err(AppError::InvalidInput(
+            "theme must be system, light, or dark".to_string(),
+        ));
+    }
+
+    let mailbox = state.mailbox.lock().expect("database mutex poisoned");
+    mailbox.set_setting("theme", &mode)?;
+    Ok(ThemeResult { mode })
+}
+
 fn refresh_folder_unread_counts(conn: &Connection) -> CommandResult<()> {
     conn.execute(
         "UPDATE folders
@@ -647,4 +946,38 @@ fn message_summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message
         has_attachments: row.get::<_, i64>(9)? == 1,
         is_unread: row.get::<_, i64>(10)? == 1,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ensure_sync_supported, Mailbox};
+    use crate::models::Provider;
+
+    #[test]
+    fn rejects_provider_sync_without_an_implementation() {
+        let error = ensure_sync_supported(Provider::Gmail).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "unsupported provider: gmail mail sync is not implemented"
+        );
+    }
+
+    #[test]
+    fn queues_remote_delete_and_moves_local_message_first() {
+        let mut mailbox = Mailbox::in_memory().unwrap();
+        mailbox.seed_deletion_example().unwrap();
+
+        assert_eq!(
+            mailbox.delete_messages(&["local-1".to_string()]).unwrap(),
+            1
+        );
+        assert_eq!(
+            mailbox.message_folder("local-1").unwrap().as_deref(),
+            Some("trash")
+        );
+        assert_eq!(
+            mailbox.pending_action("remote-1").unwrap().as_deref(),
+            Some("trash")
+        );
+    }
 }
