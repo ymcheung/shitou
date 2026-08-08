@@ -18,7 +18,7 @@ pub struct AuthSession {
     pub authenticated: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Provider {
     Gmail,
@@ -33,6 +33,14 @@ impl Provider {
             "outlook" => Ok(Self::Outlook),
             "icloud" => Ok(Self::Icloud),
             other => Err(AppError::UnsupportedProvider(other.to_string())),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Gmail => "gmail",
+            Self::Outlook => "outlook",
+            Self::Icloud => "icloud",
         }
     }
 }
@@ -92,13 +100,6 @@ pub struct MessageDetail {
     pub body_html: String,
     pub body_text: String,
     pub attachments: Vec<Attachment>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ProviderAuthStart {
-    pub provider: Provider,
-    pub auth_url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

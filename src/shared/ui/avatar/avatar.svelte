@@ -1,27 +1,26 @@
 <script lang="ts">
-  import { Avatar as AvatarPrimitive } from "bits-ui";
-  import { cn, type WithoutChildrenOrChild } from "$shared/utils.js";
-  import type { Snippet } from "svelte";
+	import { Avatar as AvatarPrimitive } from "bits-ui";
+	import { cn } from "$shared/utils.js";
 
-  let {
-    ref = $bindable(null),
-    class: className,
-    children,
-    ...restProps
-  }: WithoutChildrenOrChild<AvatarPrimitive.RootProps> & {
-    ref?: HTMLElement | null;
-    children?: Snippet;
-  } = $props();
+	let {
+		ref = $bindable(null),
+		loadingStatus = $bindable("loading"),
+		size = "default",
+		class: className,
+		...restProps
+	}: AvatarPrimitive.RootProps & {
+		size?: "default" | "sm" | "lg";
+	} = $props();
 </script>
 
 <AvatarPrimitive.Root
-  bind:ref
-  data-slot="avatar"
-  class={cn(
-    "relative flex size-8 shrink-0 overflow-hidden rounded-full",
-    className,
-  )}
-  {...restProps}
->
-  {@render children?.()}
-</AvatarPrimitive.Root>
+	bind:ref
+	bind:loadingStatus
+	data-slot="avatar"
+	data-size={size}
+	class={cn(
+		"size-8 rounded-full after:rounded-full data-[size=lg]:size-10 data-[size=sm]:size-6 after:border-border group/avatar relative flex shrink-0 select-none after:absolute after:inset-0 after:border after:mix-blend-darken dark:after:mix-blend-lighten",
+		className
+	)}
+	{...restProps}
+/>

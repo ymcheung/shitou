@@ -406,10 +406,15 @@
     ) {
       return;
     }
-    await mailApi.deleteMessages(messageIds);
-    selectedMessageIds = [];
-    await refreshFolders();
-    if (selectedFolderId) await loadMessages(selectedFolderId, nextMessageId);
+    appError = "";
+    try {
+      await mailApi.deleteMessages(messageIds);
+      selectedMessageIds = [];
+      await refreshFolders();
+      if (selectedFolderId) await loadMessages(selectedFolderId, nextMessageId);
+    } catch (error) {
+      appError = error instanceof Error ? error.message : "Delete failed.";
+    }
   }
 
   async function moveMessageToTrash(messageIds: string[]) {
@@ -483,7 +488,12 @@
     appError = "";
 
     try {
-      await mailApi.connectProvider(provider);
+      const account = await mailApi.connectProvider(provider);
+      accounts = [
+        ...accounts.filter((existing) => existing.id !== account.id),
+        account,
+      ];
+      foldersByAccount = { ...foldersByAccount, [account.id]: [] };
       accountPanelOpen = false;
     } catch (error) {
       appError =
@@ -496,46 +506,64 @@
   }
 
   async function connectIcloud() {
-    if (isDemoMode) {
-      appError = "Adding accounts is unavailable in demo mode.";
-      return;
-    }
+    if (isDemoMode) return false;
 
     appBusy = true;
     appError = "";
 
     try {
       const account = await mailApi.connectIcloud(icloudEmail, icloudPassword);
-      accounts = [...accounts, account];
+      accounts = [
+        ...accounts.filter((existing) => existing.id !== account.id),
+        account,
+      ];
       foldersByAccount = { ...foldersByAccount, [account.id]: [] };
       icloudEmail = "";
       icloudPassword = "";
       accountPanelOpen = false;
+      try {
+        const syncedAccount = await mailApi.syncAccount(account.id);
+        accounts = accounts.map((existing) =>
+          existing.id === syncedAccount.id ? syncedAccount : existing,
+        );
+        await refreshFolders();
+        if (selectedFolderId) await loadMessages(selectedFolderId);
+      } catch (syncError) {
+        appError = `iCloud connected. ${
+          syncError instanceof Error
+            ? syncError.message
+            : "Mail sync will be available shortly."
+        }`;
+      }
+      return true;
     } catch (error) {
       appError =
-        error instanceof Error
-          ? error.message
-          : "Unable to connect iCloud Mail.";
+        error instanceof Error ? error.message : "Unable to connect iCloud.";
+      return false;
     } finally {
       appBusy = false;
     }
   }
 
   async function removeAccount(accountId: string) {
-    if (!window.confirm("Remove this mail account from Shitou Mail?")) {
-      return;
-    }
-    await mailApi.removeAccount(accountId);
-    accounts = accounts.filter((account) => account.id !== accountId);
-    const { [accountId]: _removed, ...remainingColors } = accountColorOverrides;
-    accountColorOverrides = remainingColors;
-    if (selectedAccountId === accountId) {
-      selectedAccountId = accounts[0]?.id || "";
-      folders = [];
-      messages = [];
-      selectedMessage = null;
-      if (selectedAccountId) await loadFolders(selectedAccountId);
-      else await loadRootFolder("root:inbox");
+    appError = "";
+    try {
+      await mailApi.removeAccount(accountId);
+      accounts = accounts.filter((account) => account.id !== accountId);
+      const { [accountId]: _removed, ...remainingColors } =
+        accountColorOverrides;
+      accountColorOverrides = remainingColors;
+      if (selectedAccountId === accountId) {
+        selectedAccountId = accounts[0]?.id || "";
+        folders = [];
+        messages = [];
+        selectedMessage = null;
+        if (selectedAccountId) await loadFolders(selectedAccountId);
+        else await loadRootFolder("root:inbox");
+      }
+    } catch (error) {
+      appError =
+        error instanceof Error ? error.message : "Unable to remove account.";
     }
   }
 

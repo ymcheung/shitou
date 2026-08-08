@@ -1,0 +1,11 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "shitou-icloud-connect",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-08",
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": {
+    "NYLAS_API_URI": "https://api.us.nylas.com",
+  },
+}

@@ -207,21 +207,17 @@ function refreshDemoUnreadCounts() {
 }
 
 export const demoMailbox = {
-  connectProviderFallback(provider: "gmail" | "outlook") {
-    return {
-      provider,
-      authUrl:
-        provider === "gmail"
-          ? "https://accounts.google.com/o/oauth2/v2/auth"
-          : "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
-    };
-  },
-  connectIcloudFallback(email: string): MailAccount {
+  connectProviderFallback(provider: Provider): MailAccount {
     return {
       id: `acc-${Date.now()}`,
-      provider: "icloud",
-      email,
-      displayName: "iCloud Mail",
+      provider,
+      email: `reader@${provider === "outlook" ? "outlook.com" : `${provider}.com`}`,
+      displayName:
+        provider === "gmail"
+          ? "Gmail"
+          : provider === "outlook"
+            ? "Outlook"
+            : "iCloud Mail",
       syncStatus: "idle",
       lastSyncedAt: null,
     };

@@ -12,7 +12,6 @@ import { demoAccounts, demoMailbox } from "./demo-mailbox";
 
 const canInvoke =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-const authSessionStorageKey = "shitou.authSession";
 
 async function call<T>(
   command: string,
@@ -36,51 +35,20 @@ async function call<T>(
 export const api = {
   authSendEmailOtp: (email: string) =>
     call<{ sent: boolean; email: string }>("auth_send_email_otp", { email }),
-  authCurrentSession: async () => {
-    if (canInvoke) return call<AuthSession | null>("auth_current_session");
-
-    const value = window.localStorage.getItem(authSessionStorageKey);
-    if (!value) return null;
-
-    try {
-      return JSON.parse(value) as AuthSession;
-    } catch {
-      window.localStorage.removeItem(authSessionStorageKey);
-      return null;
-    }
-  },
-  authVerifyEmailOtp: async (email: string, otp: string) => {
-    const session = await call<AuthSession>(
-      "auth_verify_email_otp",
-      { email, otp },
-      { authenticated: true, email, userId: "demo-user" },
-    );
-    if (!canInvoke)
-      window.localStorage.setItem(
-        authSessionStorageKey,
-        JSON.stringify(session),
-      );
-    return session;
-  },
-  authLogout: async () => {
-    const result = await call<{ removed: boolean }>("auth_logout", undefined, {
-      removed: true,
-    });
-    if (!canInvoke) window.localStorage.removeItem(authSessionStorageKey);
-    return result;
-  },
+  authCurrentSession: () =>
+    call<AuthSession | null>("auth_current_session", undefined, null),
+  authVerifyEmailOtp: (email: string, otp: string) =>
+    call<AuthSession>("auth_verify_email_otp", { email, otp }),
+  authLogout: () =>
+    call<{ removed: boolean }>("auth_logout", undefined, { removed: true }),
   connectProvider: (provider: Exclude<Provider, "icloud">) =>
-    call<{ provider: Provider; authUrl: string }>(
+    call<MailAccount>(
       "account_connect_provider",
       { provider },
       demoMailbox.connectProviderFallback(provider),
     ),
   connectIcloud: (email: string, appPassword: string) =>
-    call<MailAccount>(
-      "account_connect_icloud",
-      { email, appPassword },
-      demoMailbox.connectIcloudFallback(email),
-    ),
+    call<MailAccount>("account_connect_icloud", { email, appPassword }),
   removeAccount: (accountId: string) =>
     call<{ removed: boolean }>(
       "account_remove",

@@ -1,9 +1,7 @@
 <script lang="ts">
   import {
-    Apple,
     ExternalLink,
     LogOut,
-    Mail,
     Monitor,
     Moon,
     Palette,
@@ -12,6 +10,9 @@
     Trash2,
     UserPlus,
   } from "@lucide/svelte";
+  import AppleLogoIcon from "phosphor-svelte/lib/AppleLogoIcon";
+  import GoogleLogoIcon from "phosphor-svelte/lib/GoogleLogoIcon";
+  import WindowsLogoIcon from "phosphor-svelte/lib/WindowsLogoIcon";
   import { Button } from "$shared/ui/button/index.js";
   import * as ButtonGroup from "$shared/ui/button-group/index.js";
   import * as Sheet from "$shared/ui/sheet/index.js";
@@ -35,25 +36,24 @@
     id: Provider;
     label: string;
     description: string;
-    icon: typeof Mail;
   }> = [
     {
       id: "gmail",
       label: "Gmail",
       description: "Continue with Google OAuth.",
-      icon: Mail,
+      icon: GoogleLogoIcon,
     },
     {
       id: "outlook",
       label: "Outlook",
       description: "Continue with Microsoft OAuth.",
-      icon: Mail,
+      icon: WindowsLogoIcon,
     },
     {
       id: "icloud",
       label: "iCloud",
-      description: "Use an app-specific password.",
-      icon: Apple,
+      description: "Connect using an Apple app-specific password.",
+      icon: AppleLogoIcon,
     },
   ];
 
@@ -94,7 +94,7 @@
     onConnectProvider: (
       provider: Exclude<Provider, "icloud">,
     ) => void | Promise<void>;
-    onConnectIcloud: () => void | Promise<void>;
+    onConnectIcloud: () => boolean | Promise<boolean>;
     onRemoveAccount: (accountId: string) => void | Promise<void>;
     onUpdateAccountColor: (accountId: string, color: string) => void;
     onDeleteUserAccount: () => void | Promise<void>;
@@ -105,6 +105,7 @@
       (provider) => provider.id === selectedAddProvider,
     ) ?? addAccountProviders[0],
   );
+  let pendingRemovalAccountId = $state("");
 
   function openAddAccountSheet(provider: Provider) {
     selectedAddProvider = provider;
@@ -113,11 +114,20 @@
 
   async function connectSelectedProvider() {
     if (selectedAddProvider === "icloud") {
-      await onConnectIcloud();
+      if (!(await onConnectIcloud())) return;
     } else {
       await onConnectProvider(selectedAddProvider);
     }
     addAccountSheetOpen = false;
+  }
+
+  async function removeAccount(accountId: string) {
+    if (pendingRemovalAccountId !== accountId) {
+      pendingRemovalAccountId = accountId;
+      return;
+    }
+    await onRemoveAccount(accountId);
+    pendingRemovalAccountId = "";
   }
 </script>
 
@@ -325,68 +335,70 @@
                     </Sheet.Header>
 
                     <div class="grid flex-1 auto-rows-min gap-5 px-4">
-                      {#if selectedAddProvider === "icloud"}
-                        <div class="grid gap-3">
-                          <label
-                            class="text-sm font-semibold text-zinc-800 dark:text-zinc-100"
-                            for="settings-icloud-email">iCloud email</label
+                      <div
+                        class="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
+                      >
+                        <div class="flex items-start gap-3">
+                          <span
+                            class="grid size-9 shrink-0 place-items-center rounded-md bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200 dark:bg-indigo-950/45 dark:text-indigo-200 dark:ring-indigo-800/70"
                           >
-                          <input
-                            id="settings-icloud-email"
-                            class="h-10 rounded-md border-zinc-200 bg-zinc-50 text-sm text-zinc-950 placeholder:text-zinc-400 focus:border-indigo-500 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500"
-                            type="email"
-                            autocomplete="email"
-                            placeholder="name@icloud.com"
-                            bind:value={icloudEmail}
-                          />
-                        </div>
-                        <div class="grid gap-3">
-                          <label
-                            class="text-sm font-semibold text-zinc-800 dark:text-zinc-100"
-                            for="settings-icloud-password"
-                            >App-specific password</label
-                          >
-                          <input
-                            id="settings-icloud-password"
-                            class="h-10 rounded-md border-zinc-200 bg-zinc-50 text-sm text-zinc-950 placeholder:text-zinc-400 focus:border-indigo-500 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-500"
-                            type="password"
-                            autocomplete="current-password"
-                            placeholder="xxxx-xxxx-xxxx-xxxx"
-                            bind:value={icloudPassword}
-                          />
-                        </div>
-                        <p
-                          class="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs leading-5 text-zinc-600 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400"
-                        >
-                          Generate this password in Apple Account settings, then
-                          Shitou Mail stores it in the local keychain for IMAP
-                          access.
-                        </p>
-                      {:else}
-                        <div
-                          class="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
-                        >
-                          <div class="flex items-start gap-3">
-                            <span
-                              class="grid size-9 shrink-0 place-items-center rounded-md bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200 dark:bg-indigo-950/45 dark:text-indigo-200 dark:ring-indigo-800/70"
+                            <ExternalLink size={17} />
+                          </span>
+                          <div>
+                            <div
+                              class="text-sm font-semibold text-zinc-950 dark:text-white"
                             >
-                              <ExternalLink size={17} />
-                            </span>
-                            <div>
-                              <div
-                                class="text-sm font-semibold text-zinc-950 dark:text-white"
-                              >
-                                Continue in your browser
-                              </div>
-                              <p
-                                class="mt-1 text-sm leading-6 text-zinc-500 dark:text-zinc-400"
-                              >
-                                Shitou Mail will open the provider authorization
-                                page and request read-only mail access.
-                              </p>
+                              {selectedAddProvider === "icloud"
+                                ? "Create an app-specific password first"
+                                : "Continue in your browser"}
                             </div>
+                            <p
+                              class="mt-1 text-sm leading-6 text-zinc-500 dark:text-zinc-400"
+                            >
+                              {#if selectedAddProvider === "icloud"}
+                                In Apple Account settings, open Sign-In and
+                                Security → App-Specific Passwords and create one
+                                named “Shitou Mail.” Enter it below. It is sent
+                                once to Nylas and is not stored by Shitou Mail.
+                                Never enter your normal Apple password.
+                              {:else}
+                                Shitou Mail will open Nylas and request
+                                read-only mail access from your provider.
+                              {/if}
+                            </p>
                           </div>
                         </div>
+                      </div>
+
+                      {#if selectedAddProvider === "icloud"}
+                        <label class="block">
+                          <span
+                            class="text-sm font-medium text-zinc-800 dark:text-zinc-100"
+                            >iCloud Mail address</span
+                          >
+                          <input
+                            class="mt-2 h-10 w-full rounded-md border-zinc-300 bg-white text-zinc-950 shadow-sm placeholder:text-zinc-400 focus:border-indigo-500 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+                            type="email"
+                            autocomplete="username"
+                            placeholder="you@icloud.com"
+                            bind:value={icloudEmail}
+                            required
+                          />
+                        </label>
+                        <label class="block">
+                          <span
+                            class="text-sm font-medium text-zinc-800 dark:text-zinc-100"
+                            >Apple app-specific password</span
+                          >
+                          <input
+                            class="mt-2 h-10 w-full rounded-md border-zinc-300 bg-white text-zinc-950 shadow-sm placeholder:text-zinc-400 focus:border-indigo-500 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+                            type="password"
+                            autocomplete="off"
+                            placeholder="xxxx-xxxx-xxxx-xxxx"
+                            bind:value={icloudPassword}
+                            required
+                          />
+                        </label>
                       {/if}
                     </div>
 
@@ -395,14 +407,10 @@
                     >
                       <Button
                         class="cursor-pointer"
-                        disabled={appBusy ||
-                          (selectedAddProvider === "icloud" &&
-                            (!icloudEmail || !icloudPassword))}
+                        disabled={appBusy}
                         onclick={() => void connectSelectedProvider()}
                       >
-                        {#if selectedAddProvider === "icloud"}<Apple
-                            size={16}
-                          />{:else}<ExternalLink size={16} />{/if}
+                        <ExternalLink size={16} />
                         {selectedAddProvider === "icloud"
                           ? "Connect iCloud"
                           : `Continue with ${selectedProvider.label}`}
@@ -492,9 +500,12 @@
                         <button
                           class="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md border border-red-200 bg-zinc-50 px-3 text-sm font-semibold text-red-700 transition-colors duration-200 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:ring-offset-zinc-50 dark:border-red-950 dark:bg-zinc-950 dark:text-red-300 dark:hover:bg-red-950/40 dark:focus:ring-offset-zinc-900"
                           type="button"
-                          onclick={() => void onRemoveAccount(account.id)}
+                          onclick={() => void removeAccount(account.id)}
                         >
-                          <Trash2 size={15} /> Remove
+                          <Trash2 size={15} />
+                          {pendingRemovalAccountId === account.id
+                            ? "Confirm remove"
+                            : "Remove"}
                         </button>
                       </div>
                       <div class="mt-3 flex flex-wrap items-center gap-2">
