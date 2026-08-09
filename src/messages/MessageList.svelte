@@ -170,13 +170,6 @@
         <h2 class="truncate text-lg font-semibold tracking-normal">
           {selectedFolder?.name ?? "Mailbox"}
         </h2>
-        <p
-          class="truncate text-xs font-medium text-zinc-500 dark:text-zinc-400"
-        >
-          {selectedAccount?.email ?? "All mailboxes"} · {selectedAccount
-            ? formatRelative(selectedAccount.lastSyncedAt)
-            : `${accountsCount} accounts`}
-        </p>
       </div>
     </div>
     <div class="mt-3 flex items-center justify-between gap-2">

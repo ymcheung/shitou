@@ -663,7 +663,6 @@
         onLoadRootFolder={loadRootFolder}
         onLoadFolders={loadFolders}
         onLoadMessages={loadMessages}
-        onRemoveAccount={removeAccount}
         onOpenSettings={() => openSettings("general")}
       />
 

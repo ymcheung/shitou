@@ -18,7 +18,6 @@
     onLoadRootFolder,
     onLoadFolders,
     onLoadMessages,
-    onRemoveAccount,
     onOpenSettings,
   }: {
     offlineAccounts: number;
@@ -33,7 +32,6 @@
     onLoadRootFolder: (folderId: string) => void | Promise<void>;
     onLoadFolders: (accountId: string) => void | Promise<void>;
     onLoadMessages: (folderId: string) => void | Promise<void>;
-    onRemoveAccount: (accountId: string) => void | Promise<void>;
     onOpenSettings: () => void;
   } = $props();
 
@@ -169,11 +167,12 @@
         {@const ProviderIcon = providerIcon(account.provider)}
         <section>
           <div
-            class="group flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-100/70 dark:hover:bg-zinc-700/70"
+            class="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-100/70 dark:hover:bg-zinc-700/70"
           >
             <button
-              class="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
+              class="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left disabled:cursor-default"
               type="button"
+              disabled={selectedAccountId === account.id}
               onclick={() => void onLoadFolders(account.id)}
             >
               <span
@@ -196,14 +195,6 @@
                   >{account.email}</span
                 >
               </span>
-            </button>
-            <button
-              class="hidden size-7 cursor-pointer place-items-center rounded-lg text-zinc-400 hover:bg-red-50 hover:text-red-600 focus-visible:grid group-hover:grid dark:hover:bg-red-950/40"
-              title="Remove account"
-              type="button"
-              onclick={() => void onRemoveAccount(account.id)}
-            >
-              <Trash2 size={15} />
             </button>
           </div>
 
