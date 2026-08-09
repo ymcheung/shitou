@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { AlertCircle, CloudOff, Inbox, Trash2 } from "@lucide/svelte";
+  import { AlertCircle, CloudOff, Inbox, Settings, Trash2 } from "@lucide/svelte";
   import AppleLogoIcon from "phosphor-svelte/lib/AppleLogoIcon";
   import GoogleLogoIcon from "phosphor-svelte/lib/GoogleLogoIcon";
   import WindowsLogoIcon from "phosphor-svelte/lib/WindowsLogoIcon";
@@ -19,6 +19,7 @@
     onLoadFolders,
     onLoadMessages,
     onRemoveAccount,
+    onOpenSettings,
   }: {
     offlineAccounts: number;
     appError: string;
@@ -33,6 +34,7 @@
     onLoadFolders: (accountId: string) => void | Promise<void>;
     onLoadMessages: (folderId: string) => void | Promise<void>;
     onRemoveAccount: (accountId: string) => void | Promise<void>;
+    onOpenSettings: () => void;
   } = $props();
 
   const sidebarStyles = {
@@ -102,8 +104,8 @@
   }
 </script>
 
-<aside class="flex min-w-0 flex-col bg-transparent">
-  <div class="mail-scrollbar flex-1 overflow-y-auto p-3">
+<aside class="flex min-h-0 min-w-0 flex-col bg-transparent">
+  <div class="mail-scrollbar min-h-0 flex-1 overflow-y-auto p-3">
     {#if offlineAccounts}
       <div
         class="mb-3 flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-medium text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
@@ -254,4 +256,15 @@
       {/each}
     </div>
   </div>
+
+  <footer class="border-t border-zinc-200/80 p-3 dark:border-zinc-800">
+    <button
+      class="flex h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 hover:text-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-500/30 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:hover:text-white dark:focus:ring-zinc-400/30"
+      type="button"
+      onclick={onOpenSettings}
+    >
+      <Settings size={16} />
+      Settings
+    </button>
+  </footer>
 </aside>

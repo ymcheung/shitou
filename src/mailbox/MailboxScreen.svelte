@@ -4,7 +4,7 @@
   import MessageReader from "../messages/MessageReader.svelte";
   import SettingsDialog from "../settings/SettingsDialog.svelte";
   import { onMount } from "svelte";
-  import { Mail, RefreshCw, Search, Settings } from "@lucide/svelte";
+  import { RefreshCw, Search } from "@lucide/svelte";
   import {
     accountColor as resolveAccountColor,
     accountLabel as resolveAccountLabel,
@@ -600,11 +600,7 @@
       class="absolute inset-x-0 top-0 z-20 flex h-[52px] items-center justify-between border-b border-zinc-200/80 px-4 dark:border-zinc-900"
     >
       <div class="flex min-w-0 items-center gap-3">
-        <div
-          class="grid size-9 shrink-0 place-items-center rounded-xl bg-zinc-900 text-white shadow-sm ring-1 ring-zinc-200 dark:bg-zinc-100 dark:text-zinc-950 dark:ring-zinc-700"
-        >
-          <Mail size={18} />
-        </div>
+        <img class="size-9 shrink-0" src="/app-icon.png" alt="" />
         <div class="min-w-0">
           <div class="truncate text-sm font-semibold">Shitou Mail</div>
           <div class="truncate text-xs text-zinc-500 dark:text-zinc-400">
@@ -646,14 +642,6 @@
           Sync
         </button>
 
-        <button
-          class="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-800 shadow-sm hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-500/30 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:shadow-black/20 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:focus:ring-zinc-400/30"
-          type="button"
-          onclick={() => openSettings("general")}
-        >
-          <Settings size={14} />
-          Settings
-        </button>
       </div>
     </header>
 
@@ -676,6 +664,7 @@
         onLoadFolders={loadFolders}
         onLoadMessages={loadMessages}
         onRemoveAccount={removeAccount}
+        onOpenSettings={() => openSettings("general")}
       />
 
       <button

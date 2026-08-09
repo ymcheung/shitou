@@ -1,11 +1,6 @@
 <script lang="ts">
-  import {
-    CloudOff,
-    Mail,
-    Paperclip,
-    ShieldCheck,
-    Trash2,
-  } from "@lucide/svelte";
+  import { Mail, Paperclip } from "@lucide/svelte";
+  import TrashIcon from "phosphor-svelte/lib/TrashIcon";
   import { formatBytes } from "../app/formatting";
   import SenderAvatar from "./SenderAvatar.svelte";
   import type { MessageDetail } from "../shared/mail.types";
@@ -27,36 +22,26 @@
   {#if message}
     <header class="border-b border-zinc-200 dark:border-zinc-800">
       <div class="mx-auto w-full max-w-[800px] p-6">
-        <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <div class="flex flex-wrap gap-2">
-            <span
-              class="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-200"
-            >
-              <ShieldCheck size={14} /> Read-only
-            </span>
-            <span
-              class="inline-flex items-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs font-semibold text-zinc-700 dark:border-zinc-900/60 dark:bg-zinc-950/40 dark:text-zinc-200"
-            >
-              <CloudOff size={14} /> Offline cache
-            </span>
-          </div>
-          <button
-            class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-red-200 bg-zinc-50 px-2.5 text-xs font-semibold text-red-700 transition-colors duration-200 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500/30 dark:border-red-950 dark:bg-zinc-900 dark:text-red-300 dark:hover:bg-red-950/40 dark:focus:ring-red-400/30"
-            type="button"
-            aria-label={isPermanentDeleteFolder
-              ? "Delete this mail forever"
-              : "Move this mail to Trash"}
-            onclick={() => void onDeleteMessage()}
-          >
-            <Trash2 size={14} />
-            {isPermanentDeleteFolder ? "Delete forever" : "Move to Trash"}
-          </button>
-        </div>
         <h2
           class="text-2xl font-semibold leading-tight tracking-normal text-zinc-950 dark:text-white"
         >
           {message.subject}
         </h2>
+        <div class="mt-3 flex justify-end">
+          <button
+            class="grid size-10 cursor-pointer place-items-center rounded-lg text-zinc-500 transition-[color,background-color,scale] duration-200 hover:bg-red-50 hover:text-red-700 active:scale-[0.96] focus:outline-none focus:ring-2 focus:ring-red-500/30 dark:text-zinc-400 dark:hover:bg-red-950/40 dark:hover:text-red-300 dark:focus:ring-red-400/30"
+            type="button"
+            aria-label={isPermanentDeleteFolder
+              ? "Delete this mail forever"
+              : "Move this mail to Trash"}
+            title={isPermanentDeleteFolder
+              ? "Delete this mail forever"
+              : "Move this mail to Trash"}
+            onclick={() => void onDeleteMessage()}
+          >
+            <TrashIcon size={20} />
+          </button>
+        </div>
         <div class="mt-5 flex min-w-0 items-start gap-3">
           <SenderAvatar
             sender={message.sender}
@@ -91,7 +76,7 @@
 
     <div class="mx-auto w-full max-w-[800px]">
       <div
-        class="prose prose-zinc max-w-none p-6 prose-a:text-zinc-950 dark:prose-invert dark:prose-a:text-zinc-100"
+        class="mail-content prose prose-zinc max-w-none p-6 prose-a:text-zinc-950 dark:prose-invert dark:prose-a:text-zinc-100"
       >
         {@html message.bodyHtml}
       </div>
@@ -139,3 +124,16 @@
     </div>
   {/if}
 </article>
+
+<style>
+  :global(.dark .mail-content [style*="color: black" i]),
+  :global(.dark .mail-content [style*="color:#000" i]),
+  :global(.dark .mail-content [style*="color: #000" i]),
+  :global(.dark .mail-content [style*="color:rgb(0" i]),
+  :global(.dark .mail-content [style*="color: rgb(0" i]),
+  :global(.dark .mail-content font[color="black" i]),
+  :global(.dark .mail-content font[color="#000" i]),
+  :global(.dark .mail-content font[color="#000000" i]) {
+    color: #f4f4f5 !important;
+  }
+</style>

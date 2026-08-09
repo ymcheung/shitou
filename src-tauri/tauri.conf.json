@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Shitou Mail",
+  "productName": "石頭里",
   "version": "0.1.0",
   "identifier": "com.shitou.mail",
   "build": {
@@ -43,7 +43,7 @@
     "longDescription": "A macOS desktop mail reader with Email OTP auth, read-only mail access, and encrypted local offline storage.",
     "macOS": {
       "minimumSystemVersion": "12.0",
-      "signingIdentity": null,
+      "signingIdentity": "Apple Development: ymcheung.tw@me.com (V877PJHSF3)",
       "entitlements": null,
       "exceptionDomain": "",
       "frameworks": [],
