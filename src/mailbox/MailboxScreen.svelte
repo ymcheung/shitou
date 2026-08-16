@@ -2,6 +2,7 @@
   import AccountSidebar from "../accounts/AccountSidebar.svelte";
   import MessageList from "../messages/MessageList.svelte";
   import MessageReader from "../messages/MessageReader.svelte";
+  import NotificationListView from "../notifications/NotificationList.svelte";
   import SettingsDialog from "../settings/SettingsDialog.svelte";
   import { onMount } from "svelte";
   import { RefreshCw, Search } from "@lucide/svelte";
@@ -29,6 +30,8 @@
     MailAccount,
     MessageDetail,
     MessageSummary,
+    NotificationList,
+    NotificationSummary,
     Provider,
     ThemeMode,
   } from "$lib/types";
@@ -47,6 +50,14 @@
   let folders = $state.raw<Folder[]>([]);
   let foldersByAccount = $state.raw<Record<string, Folder[]>>({});
   let messages = $state.raw<MessageSummary[]>([]);
+  let notificationState = $state.raw<NotificationList>({
+    items: [],
+    unseenCount: 0,
+    nextExpiryAt: null,
+    enabled: true,
+  });
+  let notificationAccountFilter = $state("");
+  let selectedNotificationId = $state("");
   let selectedMessageIds = $state.raw<string[]>([]);
   let selectedAccountId = $state("");
   let selectedFolderId = $state("");
@@ -65,12 +76,32 @@
   let accountPanelWidth = $state(272);
   let messageListWidth = $state(430);
   let activeResize = $state.raw<ResizeState | null>(null);
+  let notificationRefreshInFlight = false;
+  let notificationExpiryTimer: number | undefined;
 
   let selectedAccount = $derived(
     accounts.find((account) => account.id === selectedAccountId) ?? null,
   );
   let allFolders = $derived(Object.values(foldersByAccount).flat());
-  let rootFolders = $derived(buildRootFolders(allFolders));
+  let rootFolders = $derived(
+    buildRootFolders(allFolders, notificationState.unseenCount),
+  );
+  let isNotificationsFolder = $derived(
+    selectedFolderId === "root:notifications",
+  );
+  let visibleNotifications = $derived(
+    notificationAccountFilter
+      ? notificationState.items.filter(
+          (notification) =>
+            notification.accountId === notificationAccountFilter,
+        )
+      : notificationState.items,
+  );
+  let selectedNotification = $derived(
+    notificationState.items.find(
+      (notification) => notification.id === selectedNotificationId,
+    ) ?? null,
+  );
   let selectedFolder = $derived(
     [...rootFolders, ...folders].find(
       (folder) => folder.id === selectedFolderId,
@@ -94,21 +125,33 @@
   );
   onMount(() => {
     applyTheme(theme);
-    void loadMailbox();
-    if (!("__TAURI_INTERNALS__" in window)) return undefined;
+    void loadMailbox().then(() =>
+      refreshNotifications({ summarizeSecurity: true, syncMail: true }),
+    );
+    const notificationInterval = window.setInterval(
+      () =>
+        void refreshNotifications({ summarizeSecurity: true, syncMail: true }),
+      3 * 60 * 60 * 1_000,
+    );
 
     let unlisten: (() => void) | undefined;
-    void import("@tauri-apps/api/event").then(({ listen }) => {
-      void listen<"general" | "accounts" | "advanced">(
-        "open-settings",
-        (event) => openSettings(event.payload ?? "general"),
-      ).then((nextUnlisten) => {
-        unlisten = nextUnlisten;
+    if ("__TAURI_INTERNALS__" in window) {
+      void import("@tauri-apps/api/event").then(({ listen }) => {
+        void listen<"general" | "accounts" | "advanced">(
+          "open-settings",
+          (event) => openSettings(event.payload ?? "general"),
+        ).then((nextUnlisten) => {
+          unlisten = nextUnlisten;
+        });
       });
-    });
+    }
 
     return () => {
       unlisten?.();
+      window.clearInterval(notificationInterval);
+      if (notificationExpiryTimer !== undefined) {
+        window.clearTimeout(notificationExpiryTimer);
+      }
     };
   });
 
@@ -118,12 +161,16 @@
 
     try {
       accounts = await client.listAccounts();
+      notificationState = await client.listNotifications();
+      scheduleNotificationExpiry();
       foldersByAccount = await loadFoldersByAccount(accounts);
       folders = selectedAccountId
         ? (foldersByAccount[selectedAccountId] ?? [])
         : [];
       if (!selectedFolderId) {
         await loadRootFolder("root:inbox");
+      } else if (selectedFolderId === "root:notifications") {
+        await loadNotifications();
       } else if (selectedFolderId.startsWith("root:")) {
         await loadMessages(selectedFolderId);
       } else if (selectedAccountId) {
@@ -159,7 +206,136 @@
   async function loadRootFolder(folderId: string) {
     selectedAccountId = "";
     folders = [];
+    if (folderId === "root:notifications") {
+      selectedFolderId = folderId;
+      messages = [];
+      selectedMessageIds = [];
+      selectedMessage = null;
+      selectedNotificationId = "";
+      await loadNotifications();
+      return;
+    }
+    selectedNotificationId = "";
     await loadMessages(folderId);
+  }
+
+  function scheduleNotificationExpiry() {
+    if (notificationExpiryTimer !== undefined) {
+      window.clearTimeout(notificationExpiryTimer);
+      notificationExpiryTimer = undefined;
+    }
+    if (!notificationState.enabled || !notificationState.nextExpiryAt) return;
+    const delay = Date.parse(notificationState.nextExpiryAt) - Date.now();
+    notificationExpiryTimer = window.setTimeout(
+      () => void refreshNotifications({}),
+      Math.max(0, Math.min(delay, 2_147_483_647)),
+    );
+  }
+
+  async function loadNotifications(markVisibleSeen = true) {
+    notificationState = await client.listNotifications();
+    if (markVisibleSeen) await markVisibleNotificationsSeen();
+    scheduleNotificationExpiry();
+  }
+
+  async function markVisibleNotificationsSeen() {
+    const visible = notificationAccountFilter
+      ? notificationState.items.filter(
+          (notification) =>
+            notification.accountId === notificationAccountFilter,
+        )
+      : notificationState.items;
+    const unseenIds = visible
+      .filter((notification) => !notification.isSeen)
+      .map((notification) => notification.id);
+    if (!unseenIds.length) return;
+    await client.markNotificationsSeen(unseenIds);
+    const seen = new Set(unseenIds);
+    notificationState = {
+      ...notificationState,
+      items: notificationState.items.map((notification) =>
+        seen.has(notification.id)
+          ? { ...notification, isSeen: true }
+          : notification,
+      ),
+      unseenCount: Math.max(
+        0,
+        notificationState.unseenCount - unseenIds.length,
+      ),
+    };
+  }
+
+  async function changeNotificationAccountFilter(accountId: string) {
+    notificationAccountFilter = accountId;
+    selectedNotificationId = "";
+    selectedMessage = null;
+    await markVisibleNotificationsSeen();
+  }
+
+  async function openNotification(notification: NotificationSummary) {
+    selectedNotificationId = notification.id;
+    selectedMessage = await client.getMessage(notification.messageId);
+  }
+
+  async function dismissNotification(notificationId: string) {
+    await client.dismissNotification(notificationId);
+    if (selectedNotificationId === notificationId) {
+      selectedNotificationId = "";
+      selectedMessage = null;
+    }
+    await loadNotifications(false);
+  }
+
+  async function restoreNotification(notificationId: string) {
+    await client.restoreNotification(notificationId);
+    if (selectedNotificationId === notificationId) {
+      selectedNotificationId = "";
+      selectedMessage = null;
+    }
+    await Promise.all([refreshFolders(), loadNotifications(false)]);
+  }
+
+  async function refreshNotifications({
+    summarizeSecurity = false,
+    syncMail = false,
+    reportErrors = false,
+  }: {
+    summarizeSecurity?: boolean;
+    syncMail?: boolean;
+    reportErrors?: boolean;
+  }) {
+    if (notificationRefreshInFlight) return;
+    notificationRefreshInFlight = true;
+    try {
+      notificationState = await client.processNotifications(summarizeSecurity);
+      if (syncMail) {
+        try {
+          accounts = await client.syncAll();
+        } catch (error) {
+          if (reportErrors) {
+            appError = error instanceof Error ? error.message : "Sync failed.";
+          }
+        }
+        await refreshFolders();
+        notificationState =
+          await client.processNotifications(summarizeSecurity);
+      }
+      if (isNotificationsFolder) {
+        await markVisibleNotificationsSeen();
+      } else if (selectedFolderId) {
+        await loadMessages(selectedFolderId);
+      }
+      scheduleNotificationExpiry();
+    } catch (error) {
+      if (reportErrors) {
+        appError =
+          error instanceof Error
+            ? error.message
+            : "Unable to refresh notifications.";
+      }
+    } finally {
+      notificationRefreshInFlight = false;
+    }
   }
 
   async function loadFolders(accountId: string) {
@@ -168,6 +344,7 @@
       foldersByAccount[accountId] ?? (await client.listFolders(accountId));
     foldersByAccount = { ...foldersByAccount, [accountId]: folders };
     selectedFolderId = folders[0]?.id || "";
+    selectedNotificationId = "";
     selectedMessage = null;
     if (selectedFolderId) await loadMessages(selectedFolderId);
   }
@@ -186,7 +363,7 @@
   }
 
   async function searchMessages() {
-    if (!selectedFolderId) return;
+    if (!selectedFolderId || isNotificationsFolder) return;
     messages = await client.listMessages(selectedFolderId, query);
     selectedMessageIds = [];
     selectionMode = false;
@@ -361,6 +538,7 @@
   function handleGlobalKeydown(event: KeyboardEvent) {
     if (event.key !== "Delete" && event.key !== "Backspace") return;
     if (settingsOpen || activeResize) return;
+    if (isNotificationsFolder) return;
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     if (isTextEditingTarget(event.target)) return;
     if (selectedMessageIds.length === 0 && !selectedMessage) return;
@@ -374,11 +552,7 @@
     appError = "";
 
     try {
-      accounts = await client.syncAll();
-      await refreshFolders();
-      if (selectedFolderId) await loadMessages(selectedFolderId);
-    } catch (error) {
-      appError = error instanceof Error ? error.message : "Sync failed.";
+      await refreshNotifications({ syncMail: true, reportErrors: true });
     } finally {
       appBusy = false;
     }
@@ -431,7 +605,7 @@
           existing.id === syncedAccount.id ? syncedAccount : existing,
         );
         await refreshFolders();
-        if (selectedFolderId) await loadMessages(selectedFolderId);
+        await refreshNotifications({});
       } catch (syncError) {
         appError = `iCloud connected. ${
           syncError instanceof Error
@@ -454,6 +628,7 @@
     try {
       await client.removeAccount(accountId);
       accounts = accounts.filter((account) => account.id !== accountId);
+      await loadNotifications(false);
       const { [accountId]: _removed, ...remainingColors } =
         accountColorOverrides;
       accountColorOverrides = remainingColors;
@@ -475,6 +650,19 @@
     theme = nextTheme;
     applyTheme(nextTheme);
     await settingsClient.setTheme(nextTheme);
+  }
+
+  async function changeNotificationsEnabled(enabled: boolean) {
+    const setting = await client.setNotificationsEnabled(enabled);
+    notificationState = {
+      ...(await client.listNotifications()),
+      enabled: setting.enabled,
+    };
+    await refreshFolders();
+    if (!isNotificationsFolder && selectedFolderId) {
+      await loadMessages(selectedFolderId);
+    }
+    scheduleNotificationExpiry();
   }
 
   function openSettings(tab: "general" | "accounts" | "advanced" = "general") {
@@ -591,25 +779,26 @@
 />
 
 <main
-    class={[
-      "relative h-screen overflow-hidden bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100",
-      activeResize ? "cursor-col-resize select-none" : "",
-    ]}
+  class={[
+    "relative h-screen overflow-hidden bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100",
+    activeResize ? "cursor-col-resize select-none" : "",
+  ]}
+>
+  <header
+    class="absolute inset-x-0 top-0 z-20 flex h-[52px] items-center justify-between border-b border-zinc-200/80 px-4 dark:border-zinc-900"
   >
-    <header
-      class="absolute inset-x-0 top-0 z-20 flex h-[52px] items-center justify-between border-b border-zinc-200/80 px-4 dark:border-zinc-900"
-    >
-      <div class="flex min-w-0 items-center gap-3">
-        <img class="size-9 shrink-0" src="/app-icon.png" alt="" />
-        <div class="min-w-0">
-          <div class="truncate text-sm font-semibold">Shitou Mail</div>
-          <div class="truncate text-xs text-zinc-500 dark:text-zinc-400">
-            {unreadTotal} unread
-          </div>
+    <div class="flex min-w-0 items-center gap-3">
+      <img class="size-9 shrink-0" src="/app-icon.png" alt="" />
+      <div class="min-w-0">
+        <div class="truncate text-sm font-semibold">Shitou Mail</div>
+        <div class="truncate text-xs text-zinc-500 dark:text-zinc-400">
+          {unreadTotal} unread
         </div>
       </div>
+    </div>
 
-      <div class="ml-4 flex min-w-0 flex-1 items-center justify-end gap-2">
+    <div class="ml-4 flex min-w-0 flex-1 items-center justify-end gap-2">
+      {#if !isNotificationsFolder}
         <form
           class="relative min-w-[180px] max-w-80 flex-1"
           onsubmit={(event) => {
@@ -631,53 +820,66 @@
             bind:value={query}
           />
         </form>
-
-        <button
-          class="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-sky-700 bg-sky-700 px-3 text-sm font-semibold text-white shadow-sm shadow-sky-950/10 hover:border-sky-800 hover:bg-sky-800 focus:outline-none focus:ring-2 focus:ring-sky-600/40 disabled:cursor-not-allowed disabled:opacity-60 dark:border-sky-500/70 dark:bg-sky-500 dark:text-zinc-950 dark:shadow-black/20 dark:hover:border-sky-400 dark:hover:bg-sky-400 dark:focus:ring-sky-400/40"
-          type="button"
-          onclick={() => void syncAll()}
-          disabled={appBusy}
-        >
-          <RefreshCw size={14} class={appBusy ? "animate-spin" : ""} />
-          Sync
-        </button>
-
-      </div>
-    </header>
-
-    <div
-      bind:this={mailShell}
-      class="absolute inset-x-0 bottom-0 top-[52px] grid min-h-0 overflow-hidden"
-      style:grid-template-columns={mailGridColumns}
-    >
-      <AccountSidebar
-        {offlineAccounts}
-        {appError}
-        {appBusy}
-        {rootFolders}
-        {folders}
-        {accounts}
-        {selectedFolderId}
-        {selectedAccountId}
-        {accountColor}
-        onLoadRootFolder={loadRootFolder}
-        onLoadFolders={loadFolders}
-        onLoadMessages={loadMessages}
-        onOpenSettings={() => openSettings("general")}
-      />
+      {/if}
 
       <button
-        class="group relative cursor-col-resize bg-gradient-to-b from-zinc-200/0 to-zinc-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-zinc-500 dark:from-zinc-800/0 dark:to-zinc-800"
+        class="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-sky-700 bg-sky-700 px-3 text-sm font-semibold text-white shadow-sm shadow-sky-950/10 hover:border-sky-800 hover:bg-sky-800 focus:outline-none focus:ring-2 focus:ring-sky-600/40 disabled:cursor-not-allowed disabled:opacity-60 dark:border-sky-500/70 dark:bg-sky-500 dark:text-zinc-950 dark:shadow-black/20 dark:hover:border-sky-400 dark:hover:bg-sky-400 dark:focus:ring-sky-400/40"
         type="button"
-        aria-label="Resize accounts panel. Drag or use left and right arrow keys."
-        onpointerdown={(event) => startPanelResize("accounts", event)}
-        onkeydown={(event) => handlePanelResizeKey("accounts", event)}
+        onclick={() => void syncAll()}
+        disabled={appBusy}
       >
-        <span
-          class="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 rounded-full bg-gradient-to-b from-zinc-500/0 to-zinc-500/0 transition-colors group-hover:to-zinc-500 group-focus:to-zinc-500"
-        ></span>
+        <RefreshCw size={14} class={appBusy ? "animate-spin" : ""} />
+        Sync
       </button>
+    </div>
+  </header>
 
+  <div
+    bind:this={mailShell}
+    class="absolute inset-x-0 bottom-0 top-[52px] grid min-h-0 overflow-hidden"
+    style:grid-template-columns={mailGridColumns}
+  >
+    <AccountSidebar
+      {offlineAccounts}
+      {appError}
+      {appBusy}
+      {rootFolders}
+      {folders}
+      {accounts}
+      {selectedFolderId}
+      {selectedAccountId}
+      {accountColor}
+      onLoadRootFolder={loadRootFolder}
+      onLoadFolders={loadFolders}
+      onLoadMessages={loadMessages}
+      onOpenSettings={() => openSettings("general")}
+    />
+
+    <button
+      class="group relative cursor-col-resize bg-gradient-to-b from-zinc-200/0 to-zinc-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-zinc-500 dark:from-zinc-800/0 dark:to-zinc-800"
+      type="button"
+      aria-label="Resize accounts panel. Drag or use left and right arrow keys."
+      onpointerdown={(event) => startPanelResize("accounts", event)}
+      onkeydown={(event) => handlePanelResizeKey("accounts", event)}
+    >
+      <span
+        class="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 rounded-full bg-gradient-to-b from-zinc-500/0 to-zinc-500/0 transition-colors group-hover:to-zinc-500 group-focus:to-zinc-500"
+      ></span>
+    </button>
+
+    {#if isNotificationsFolder}
+      <NotificationListView
+        notifications={visibleNotifications}
+        {accounts}
+        {selectedNotificationId}
+        accountFilter={notificationAccountFilter}
+        {accountColor}
+        onAccountFilter={changeNotificationAccountFilter}
+        onOpen={openNotification}
+        onDismiss={dismissNotification}
+        onRestore={restoreNotification}
+      />
+    {:else}
       <MessageList
         {selectedFolder}
         {selectedAccount}
@@ -701,43 +903,49 @@
         onToggleMessageSelection={toggleMessageSelection}
         onOpenMessage={openMessage}
       />
+    {/if}
 
-      <button
-        class="group relative cursor-col-resize bg-zinc-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-zinc-500 dark:bg-zinc-800"
-        type="button"
-        aria-label="Resize message list panel. Drag or use left and right arrow keys."
-        onpointerdown={(event) => startPanelResize("message", event)}
-        onkeydown={(event) => handlePanelResizeKey("message", event)}
-      >
-        <span
-          class="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 rounded-full bg-transparent transition-colors group-hover:bg-zinc-500 group-focus:bg-zinc-500"
-        ></span>
-      </button>
+    <button
+      class="group relative cursor-col-resize bg-zinc-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-zinc-500 dark:bg-zinc-800"
+      type="button"
+      aria-label="Resize message list panel. Drag or use left and right arrow keys."
+      onpointerdown={(event) => startPanelResize("message", event)}
+      onkeydown={(event) => handlePanelResizeKey("message", event)}
+    >
+      <span
+        class="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 rounded-full bg-transparent transition-colors group-hover:bg-zinc-500 group-focus:bg-zinc-500"
+      ></span>
+    </button>
 
-      <MessageReader
-        message={selectedMessage}
-        {isPermanentDeleteFolder}
-        onDeleteMessage={deleteSelectedMessages}
-      />
-    </div>
-
-    <SettingsDialog
-      bind:open={settingsOpen}
-      bind:tab={settingsTab}
-      bind:icloudEmail
-      bind:icloudPassword
-      {theme}
-      {accounts}
-      {appBusy}
-      canAddAccounts={!isDemoMode}
-      {isDemoMode}
-      {accountColor}
-      onChangeTheme={changeTheme}
-      onLogout={logout}
-      onConnectProvider={connectProvider}
-      onConnectIcloud={connectIcloud}
-      onRemoveAccount={removeAccount}
-      onUpdateAccountColor={updateAccountColor}
-      onDeleteUserAccount={deleteUserAccount}
+    <MessageReader
+      message={selectedMessage}
+      {isPermanentDeleteFolder}
+      canDelete={!isNotificationsFolder}
+      expired={isNotificationsFolder &&
+        selectedNotification?.status === "expired"}
+      onDeleteMessage={deleteSelectedMessages}
     />
-  </main>
+  </div>
+
+  <SettingsDialog
+    bind:open={settingsOpen}
+    bind:tab={settingsTab}
+    bind:icloudEmail
+    bind:icloudPassword
+    {theme}
+    {accounts}
+    notificationsEnabled={notificationState.enabled}
+    {appBusy}
+    canAddAccounts={!isDemoMode}
+    {isDemoMode}
+    {accountColor}
+    onChangeTheme={changeTheme}
+    onChangeNotificationsEnabled={changeNotificationsEnabled}
+    onLogout={logout}
+    onConnectProvider={connectProvider}
+    onConnectIcloud={connectIcloud}
+    onRemoveAccount={removeAccount}
+    onUpdateAccountColor={updateAccountColor}
+    onDeleteUserAccount={deleteUserAccount}
+  />
+</main>

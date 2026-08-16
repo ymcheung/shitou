@@ -3,6 +3,7 @@ mod auth;
 mod error;
 mod mailbox;
 mod models;
+mod notifications;
 mod state;
 
 use error::{AppError, CommandResult};
@@ -179,6 +180,13 @@ pub fn run() {
             mailbox::list_accounts,
             mailbox::list_folders,
             mailbox::list_messages,
+            notifications::process_notifications,
+            notifications::list_notifications,
+            notifications::mark_notifications_seen,
+            notifications::dismiss_notification,
+            notifications::restore_notification,
+            notifications::get_notifications_setting,
+            notifications::set_notifications_enabled,
             mailbox::get_message,
             mailbox::mark_messages_read,
             mailbox::mark_messages_unread,

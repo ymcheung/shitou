@@ -3,9 +3,13 @@ import type {
   MailAccount,
   MessageDetail,
   MessageSummary,
+  NotificationList,
+  NotificationSummary,
   Provider,
 } from "../shared/mail.types";
 import type { MailboxClient } from "./client";
+
+const demoNow = Date.now();
 
 export const demoAccounts: MailAccount[] = [
   {
@@ -21,6 +25,14 @@ export const demoAccounts: MailAccount[] = [
     provider: "icloud",
     email: "reader@icloud.com",
     displayName: "iCloud Mail",
+    syncStatus: "offline",
+    lastSyncedAt: new Date(Date.now() - 1000 * 60 * 55).toISOString(),
+  },
+  {
+    id: "acc-icloud-work",
+    provider: "icloud",
+    email: "work@icloud.com",
+    displayName: "Work iCloud",
     syncStatus: "offline",
     lastSyncedAt: new Date(Date.now() - 1000 * 60 * 55).toISOString(),
   },
@@ -50,6 +62,18 @@ export const demoFolders: Folder[] = [
     unreadCount: 0,
   },
   { id: "icloud-spam", accountId: "acc-icloud", name: "Spam", unreadCount: 0 },
+  {
+    id: "icloud-work-inbox",
+    accountId: "acc-icloud-work",
+    name: "Inbox",
+    unreadCount: 0,
+  },
+  {
+    id: "icloud-work-trash",
+    accountId: "acc-icloud-work",
+    name: "Trash",
+    unreadCount: 0,
+  },
 ];
 
 let demoMessages: MessageDetail[] = [
@@ -183,7 +207,117 @@ let demoMessages: MessageDetail[] = [
       '<p>Please confirm the reader keeps inline signature images visible in the offline body cache.</p><div class="signature"><p><img alt="Northstar Labs mark" width="36" height="36" src="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2236%22%20height=%2236%22%20viewBox=%220%200%2036%2036%22%3E%3Crect%20width=%2236%22%20height=%2236%22%20rx=%228%22%20fill=%22%2318181b%22/%3E%3Cpath%20d=%22M18%206l3.2%208.8L30%2018l-8.8%203.2L18%2030l-3.2-8.8L6%2018l8.8-3.2L18%206z%22%20fill=%22%23facc15%22/%3E%3C/svg%3E"></p><p>Avery Chen<br>Northstar Labs</p><p><img alt="Certified offline badge" width="96" height="24" src="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2296%22%20height=%2224%22%20viewBox=%220%200%2096%2024%22%3E%3Crect%20width=%2296%22%20height=%2224%22%20rx=%2212%22%20fill=%22%23ecfeff%22/%3E%3Ctext%20x=%2212%22%20y=%2216%22%20font-family=%22Arial%22%20font-size=%2210%22%20font-weight=%22700%22%20fill=%22%230e7490%22%3EOFFLINE%20READY%3C/text%3E%3C/svg%3E"></p></div>',
     attachments: [],
   },
+  {
+    id: "notification-valid-otp",
+    folderId: "icloud-inbox",
+    accountId: "acc-icloud",
+    providerMessageId: "imap:uid-otp-valid",
+    sender: "GitHub <noreply@github.com>",
+    recipients: ["reader@icloud.com"],
+    subject: "Your GitHub sign-in code is 482913",
+    preview: "This code is invalid in 15 minutes.",
+    receivedAt: new Date(demoNow - 2 * 60_000).toISOString(),
+    hasAttachments: false,
+    isUnread: true,
+    bodyText:
+      "Your GitHub sign-in code is 482913. This code is invalid in 15 minutes.",
+    bodyHtml:
+      "<p>Your GitHub sign-in code is <strong>482913</strong>.</p><p>This code is invalid in 15 minutes.</p>",
+    attachments: [],
+  },
+  {
+    id: "notification-expired-otp",
+    folderId: "icloud-inbox",
+    accountId: "acc-icloud",
+    providerMessageId: "imap:uid-otp-expired",
+    sender: "Apple <account@apple.com>",
+    recipients: ["reader@icloud.com"],
+    subject: "Apple ID 驗證碼 731204",
+    preview: "此驗證碼將在 5 分鐘後失效。",
+    receivedAt: new Date(demoNow - 20 * 60_000).toISOString(),
+    hasAttachments: false,
+    isUnread: true,
+    bodyText: "Apple ID 驗證碼為 731204。此驗證碼將在 5 分鐘後失效。",
+    bodyHtml:
+      "<p>Apple ID 驗證碼為 <strong>731204</strong>。</p><p>此驗證碼將在 5 分鐘後失效。</p>",
+    attachments: [],
+  },
+  {
+    id: "notification-login",
+    folderId: "icloud-work-inbox",
+    accountId: "acc-icloud-work",
+    providerMessageId: "imap:uid-login",
+    sender: "Notion <team@makenotion.com>",
+    recipients: ["work@icloud.com"],
+    subject: "New login detected",
+    preview: "A new device signed in to your workspace.",
+    receivedAt: new Date(demoNow - 2 * 60 * 60_000).toISOString(),
+    hasAttachments: false,
+    isUnread: true,
+    bodyText: "A new device signed in to your workspace from Taipei.",
+    bodyHtml: "<p>A new device signed in to your workspace from Taipei.</p>",
+    attachments: [],
+  },
 ];
+
+let demoNotifications: NotificationSummary[] = [
+  {
+    id: "notification-valid-otp",
+    messageId: "notification-valid-otp",
+    accountId: "acc-icloud",
+    accountEmail: "reader@icloud.com",
+    sender: "GitHub <noreply@github.com>",
+    subject: "Your GitHub sign-in code is 482913",
+    preview: "This code is invalid in 15 minutes.",
+    kind: "access",
+    status: "valid",
+    code: "482913",
+    receivedAt: new Date(demoNow - 2 * 60_000).toISOString(),
+    expiresAt: new Date(demoNow + 13 * 60_000).toISOString(),
+    reason: "One-time access · expires after 15 minutes",
+    isSeen: false,
+  },
+  {
+    id: "notification-expired-otp",
+    messageId: "notification-expired-otp",
+    accountId: "acc-icloud",
+    accountEmail: "reader@icloud.com",
+    sender: "Apple <account@apple.com>",
+    subject: "Apple ID 驗證碼",
+    preview: "此驗證碼將在 5 分鐘後失效。",
+    kind: "access",
+    status: "expired",
+    code: null,
+    receivedAt: new Date(demoNow - 20 * 60_000).toISOString(),
+    expiresAt: new Date(demoNow - 15 * 60_000).toISOString(),
+    reason: "One-time access · expired after 5 minutes",
+    isSeen: false,
+  },
+  {
+    id: "notification-login",
+    messageId: "notification-login",
+    accountId: "acc-icloud-work",
+    accountEmail: "work@icloud.com",
+    sender: "Notion <team@makenotion.com>",
+    subject: "New login detected",
+    preview: "A new device signed in to your workspace.",
+    kind: "security",
+    status: "security",
+    code: null,
+    receivedAt: new Date(demoNow - 2 * 60 * 60_000).toISOString(),
+    expiresAt: null,
+    reason: "Login notice · summarized after 1 hour",
+    isSeen: false,
+  },
+];
+
+let demoNotificationsEnabled = true;
+const hiddenDemoMessageIds = new Set([
+  "notification-expired-otp",
+  "notification-login",
+]);
+const dismissedDemoNotificationIds = new Set<string>();
+const restoredDemoNotificationIds = new Set<string>();
 
 const aggregateFolderNames: Record<string, string[]> = {
   "root:inbox": ["inbox"],
@@ -203,10 +337,40 @@ function folderMatchesAggregate(folderId: string, aggregateId: string) {
 function refreshDemoUnreadCounts() {
   for (const folder of demoFolders) {
     folder.unreadCount = demoMessages.filter(
-      (message) => message.folderId === folder.id && message.isUnread,
+      (message) =>
+        message.folderId === folder.id &&
+        message.isUnread &&
+        !hiddenDemoMessageIds.has(message.id),
     ).length;
   }
 }
+
+function demoNotificationList(accountId?: string): NotificationList {
+  const items = demoNotifications.filter(
+    (notification) =>
+      !dismissedDemoNotificationIds.has(notification.id) &&
+      !restoredDemoNotificationIds.has(notification.id) &&
+      (!accountId || notification.accountId === accountId),
+  );
+  const nextExpiryAt =
+    demoNotifications
+      .filter(
+        (notification) =>
+          notification.status === "valid" &&
+          notification.expiresAt &&
+          !restoredDemoNotificationIds.has(notification.id),
+      )
+      .map((notification) => notification.expiresAt as string)
+      .sort()[0] ?? null;
+  return {
+    items,
+    unseenCount: items.filter((notification) => !notification.isSeen).length,
+    nextExpiryAt,
+    enabled: demoNotificationsEnabled,
+  };
+}
+
+refreshDemoUnreadCounts();
 
 export const demoMailbox = {
   listFolders(accountId: string) {
@@ -219,6 +383,7 @@ export const demoMailbox = {
           ? folderMatchesAggregate(message.folderId, folderId)
           : message.folderId === folderId,
       )
+      .filter((message) => !hiddenDemoMessageIds.has(message.id))
       .filter((message) =>
         `${message.sender} ${message.subject} ${message.preview}`
           .toLowerCase()
@@ -316,7 +481,9 @@ export const demoMailboxClient: MailboxClient = {
     return { removed: true };
   },
   async syncAccount(accountId: string) {
-    const account = demoAccounts.find((candidate) => candidate.id === accountId);
+    const account = demoAccounts.find(
+      (candidate) => candidate.id === accountId,
+    );
     if (!account) throw new Error("Account not found.");
     if (account.provider !== "icloud") {
       throw new Error(`${account.provider} mail sync is not implemented.`);
@@ -349,5 +516,67 @@ export const demoMailboxClient: MailboxClient = {
   },
   async markMessagesSpam(messageIds: string[]) {
     return demoMailbox.markMessagesSpam(messageIds);
+  },
+  async processNotifications(_summarizeSecurity: boolean) {
+    if (demoNotificationsEnabled) {
+      const now = Date.now();
+      demoNotifications = demoNotifications.map((notification) => {
+        if (
+          notification.status !== "valid" ||
+          !notification.expiresAt ||
+          Date.parse(notification.expiresAt) > now ||
+          restoredDemoNotificationIds.has(notification.id)
+        ) {
+          return notification;
+        }
+        hiddenDemoMessageIds.add(notification.messageId);
+        return { ...notification, status: "expired", code: null };
+      });
+      refreshDemoUnreadCounts();
+    }
+    return demoNotificationList();
+  },
+  async listNotifications(accountId?: string) {
+    return demoNotificationList(accountId);
+  },
+  async markNotificationsSeen(notificationIds: string[]) {
+    let count = 0;
+    demoNotifications = demoNotifications.map((notification) => {
+      if (!notificationIds.includes(notification.id) || notification.isSeen) {
+        return notification;
+      }
+      count += 1;
+      return { ...notification, isSeen: true };
+    });
+    return { count };
+  },
+  async dismissNotification(notificationId: string) {
+    const count = demoNotifications.some(
+      (notification) => notification.id === notificationId,
+    )
+      ? 1
+      : 0;
+    dismissedDemoNotificationIds.add(notificationId);
+    return { count };
+  },
+  async restoreNotification(notificationId: string) {
+    const notification = demoNotifications.find(
+      (item) => item.id === notificationId,
+    );
+    if (!notification) return { count: 0 };
+    restoredDemoNotificationIds.add(notificationId);
+    dismissedDemoNotificationIds.add(notificationId);
+    hiddenDemoMessageIds.delete(notification.messageId);
+    refreshDemoUnreadCounts();
+    return { count: 1 };
+  },
+  async getNotificationsSetting() {
+    return { enabled: demoNotificationsEnabled };
+  },
+  async setNotificationsEnabled(enabled: boolean) {
+    demoNotificationsEnabled = enabled;
+    if (!enabled) hiddenDemoMessageIds.clear();
+    refreshDemoUnreadCounts();
+    return { enabled };
   },
 };

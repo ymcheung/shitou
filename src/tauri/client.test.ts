@@ -20,3 +20,41 @@ test("desktop mailbox actions do not mutate the demo adapter", async () => {
     { command: "mark_messages_read", args: { messageIds: ["msg-2"] } },
   ]);
 });
+
+test("desktop notification actions use the notification command contract", async () => {
+  const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+  const client = createDesktopMailboxClient(async (command, args) => {
+    calls.push({ command, args });
+    return {} as never;
+  });
+
+  await client.processNotifications(true);
+  await client.listNotifications("account-1");
+  await client.markNotificationsSeen(["notification-1"]);
+  await client.dismissNotification("notification-1");
+  await client.restoreNotification("notification-1");
+  await client.getNotificationsSetting();
+  await client.setNotificationsEnabled(false);
+
+  assert.deepEqual(calls, [
+    {
+      command: "process_notifications",
+      args: { summarizeSecurity: true },
+    },
+    { command: "list_notifications", args: { accountId: "account-1" } },
+    {
+      command: "mark_notifications_seen",
+      args: { notificationIds: ["notification-1"] },
+    },
+    {
+      command: "dismiss_notification",
+      args: { notificationId: "notification-1" },
+    },
+    {
+      command: "restore_notification",
+      args: { notificationId: "notification-1" },
+    },
+    { command: "get_notifications_setting", args: undefined },
+    { command: "set_notifications_enabled", args: { enabled: false } },
+  ]);
+});

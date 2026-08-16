@@ -6,6 +6,7 @@ Read-only macOS desktop mail app scaffold built with Tauri v2, SvelteKit, and Ta
 
 - Email OTP-only sign-in UI and Tauri command surface for Neon Auth.
 - Three-pane read-only mailbox UI with account list, folders, search, offline message reading, attachment metadata, and light/dark/system themes.
+- Local in-app summaries for temporary iCloud access mail and login notices; no system notification permission is used.
 - Tauri commands for account connection, local sync, account removal, folder/message reads, and theme persistence.
 - Nylas desktop OAuth with PKCE for Gmail, Outlook, and iCloud account connections.
 - Read-only Gmail (`gmail.readonly`) and Outlook (`Mail.Read`) authorization scopes.
@@ -14,7 +15,7 @@ Read-only macOS desktop mail app scaffold built with Tauri v2, SvelteKit, and Ta
 
 ## Explicitly Out Of Scope
 
-- No calendar, reminders, contacts, tasks, notifications, compose, send, SMTP, archive, delete, move, label mutation, or read/write mail scopes.
+- No calendar, reminders, contacts, tasks, system notifications, compose, send, SMTP, archive, delete, move, label mutation, or read/write mail scopes.
 - No mailbox bodies or attachment content are designed to be stored in Neon.
 
 ## Development

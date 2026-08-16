@@ -5,6 +5,8 @@ import type {
   MailAccount,
   MessageDetail,
   MessageSummary,
+  NotificationList,
+  NotificationSetting,
   Provider,
   ThemeMode,
 } from "../shared/mail.types";
@@ -28,6 +30,13 @@ export type MailboxClient = {
   markMessagesUnread(messageIds: string[]): Promise<{ count: number }>;
   deleteMessages(messageIds: string[]): Promise<{ count: number }>;
   markMessagesSpam(messageIds: string[]): Promise<{ count: number }>;
+  processNotifications(summarizeSecurity: boolean): Promise<NotificationList>;
+  listNotifications(accountId?: string): Promise<NotificationList>;
+  markNotificationsSeen(notificationIds: string[]): Promise<{ count: number }>;
+  dismissNotification(notificationId: string): Promise<{ count: number }>;
+  restoreNotification(notificationId: string): Promise<{ count: number }>;
+  getNotificationsSetting(): Promise<NotificationSetting>;
+  setNotificationsEnabled(enabled: boolean): Promise<NotificationSetting>;
 };
 
 const canInvoke =
@@ -50,7 +59,9 @@ export function createDesktopMailboxClient(
 ): MailboxClient {
   return {
     connectProvider: (provider) =>
-      call<MailAccount>(invokeCommand, "account_connect_provider", { provider }),
+      call<MailAccount>(invokeCommand, "account_connect_provider", {
+        provider,
+      }),
     connectIcloud: (email, appPassword) =>
       call<MailAccount>(invokeCommand, "account_connect_icloud", {
         email,
@@ -76,6 +87,20 @@ export function createDesktopMailboxClient(
       call(invokeCommand, "delete_messages", { messageIds }),
     markMessagesSpam: (messageIds) =>
       call(invokeCommand, "mark_messages_spam", { messageIds }),
+    processNotifications: (summarizeSecurity) =>
+      call(invokeCommand, "process_notifications", { summarizeSecurity }),
+    listNotifications: (accountId) =>
+      call(invokeCommand, "list_notifications", { accountId }),
+    markNotificationsSeen: (notificationIds) =>
+      call(invokeCommand, "mark_notifications_seen", { notificationIds }),
+    dismissNotification: (notificationId) =>
+      call(invokeCommand, "dismiss_notification", { notificationId }),
+    restoreNotification: (notificationId) =>
+      call(invokeCommand, "restore_notification", { notificationId }),
+    getNotificationsSetting: () =>
+      call(invokeCommand, "get_notifications_setting"),
+    setNotificationsEnabled: (enabled) =>
+      call(invokeCommand, "set_notifications_enabled", { enabled }),
   };
 }
 

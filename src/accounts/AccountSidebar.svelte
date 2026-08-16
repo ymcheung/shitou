@@ -1,5 +1,12 @@
 <script lang="ts">
-  import { AlertCircle, CloudOff, Inbox, Settings, Trash2 } from "@lucide/svelte";
+  import {
+    AlertCircle,
+    Bell,
+    CloudOff,
+    Inbox,
+    Settings,
+    Trash2,
+  } from "@lucide/svelte";
   import AppleLogoIcon from "phosphor-svelte/lib/AppleLogoIcon";
   import GoogleLogoIcon from "phosphor-svelte/lib/GoogleLogoIcon";
   import WindowsLogoIcon from "phosphor-svelte/lib/WindowsLogoIcon";
@@ -41,7 +48,8 @@
     iconChip: "grid size-6 shrink-0 place-items-center rounded-md ring-1",
     selectedIconChip:
       "bg-white/18 text-current ring-white/25 dark:bg-black/10 dark:ring-black/10",
-    unreadBadge: "rounded-full px-1.5 py-0.5 text-xs font-semibold",
+    unreadBadge:
+      "rounded-full px-1.5 py-0.5 text-xs font-semibold tabular-nums",
     selectedUnreadBadge: "bg-white/20 text-current dark:bg-black/10",
   } as const;
 
@@ -52,6 +60,13 @@
       selected: "bg-indigo-600 text-white shadow-sm shadow-indigo-900/10",
       unread:
         "bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-200",
+    },
+    notifications: {
+      chip: "bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-950/45 dark:text-violet-200 dark:ring-violet-800/70",
+      idle: "text-zinc-700 hover:bg-violet-50 hover:text-violet-800 dark:text-zinc-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-100",
+      selected: "bg-violet-600 text-white shadow-sm shadow-violet-900/10",
+      unread:
+        "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-200 tabular-nums",
     },
     trash: {
       chip: "bg-zinc-100 text-zinc-700 ring-zinc-200 dark:bg-zinc-900 dark:text-zinc-200 dark:ring-zinc-700",
@@ -80,19 +95,27 @@
     return `${folder.id}:${folder.name}`.toLowerCase();
   }
 
-  function folderTheme(folder: Pick<Folder, "id" | "name">) {
+  function folderKind(folder: Pick<Folder, "id" | "name">) {
     const key = folderKey(folder);
-    if (key.includes("trash")) return folderThemes.trash;
-    if (key.includes("spam") || key.includes("junk")) return folderThemes.spam;
-    if (key.includes("inbox")) return folderThemes.inbox;
-    return folderThemes.default;
+    if (key.includes("notifications")) return "notifications";
+    if (key.includes("trash")) return "trash";
+    if (key.includes("spam") || key.includes("junk")) return "spam";
+    if (key.includes("inbox")) return "inbox";
+    return "default";
+  }
+
+  function folderTheme(folder: Pick<Folder, "id" | "name">) {
+    return folderThemes[folderKind(folder)];
   }
 
   function folderIcon(folder: Pick<Folder, "id" | "name">) {
-    const key = folderKey(folder);
-    if (key.includes("trash")) return Trash2;
-    if (key.includes("spam") || key.includes("junk")) return AlertCircle;
-    return Inbox;
+    return {
+      notifications: Bell,
+      trash: Trash2,
+      spam: AlertCircle,
+      inbox: Inbox,
+      default: Inbox,
+    }[folderKind(folder)];
   }
 
   function providerIcon(provider: MailAccount["provider"]) {

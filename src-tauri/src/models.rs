@@ -104,6 +104,40 @@ pub struct MessageDetail {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct NotificationSummary {
+    pub id: String,
+    pub message_id: String,
+    pub account_id: String,
+    pub account_email: String,
+    pub sender: String,
+    pub subject: String,
+    pub preview: String,
+    pub kind: String,
+    pub status: String,
+    pub code: Option<String>,
+    pub received_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub reason: String,
+    pub is_seen: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationList {
+    pub items: Vec<NotificationSummary>,
+    pub unseen_count: usize,
+    pub next_expiry_at: Option<DateTime<Utc>>,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationSetting {
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Removed {
     pub removed: bool,
 }

@@ -1,4 +1,4 @@
-import type { Folder } from '../shared/mail.types';
+import type { Folder } from "../shared/mail.types";
 
 type RootFolderDefinition = {
   id: string;
@@ -7,20 +7,31 @@ type RootFolderDefinition = {
 };
 
 export const rootFolderDefinitions: RootFolderDefinition[] = [
-  { id: 'root:inbox', name: 'Inbox', names: ['inbox'] },
-  { id: 'root:trash', name: 'Trash', names: ['trash'] },
-  { id: 'root:spam', name: 'Spam', names: ['spam', 'junk'] }
+  { id: "root:inbox", name: "Inbox", names: ["inbox"] },
+  { id: "root:notifications", name: "Notifications", names: [] },
+  { id: "root:trash", name: "Trash", names: ["trash"] },
+  { id: "root:spam", name: "Spam", names: ["spam", "junk"] },
 ] as const;
 
-export function buildRootFolders(folders: Folder[]): Folder[] {
+export function buildRootFolders(
+  folders: Folder[],
+  notificationCount = 0,
+): Folder[] {
   return rootFolderDefinitions.map((definition) => ({
     id: definition.id,
-    accountId: 'root',
+    accountId: "root",
     name: definition.name,
-    unreadCount: folders.filter((folder) => definition.names.includes(folder.name.toLowerCase())).reduce((total, folder) => total + folder.unreadCount, 0)
+    unreadCount:
+      definition.id === "root:notifications"
+        ? notificationCount
+        : folders
+            .filter((folder) =>
+              definition.names.includes(folder.name.toLowerCase()),
+            )
+            .reduce((total, folder) => total + folder.unreadCount, 0),
   }));
 }
 
 export function isPermanentDeleteFolder(folder: Folder | null) {
-  return folder ? folder.name.toLowerCase() === 'trash' : false;
+  return folder ? folder.name.toLowerCase() === "trash" : false;
 }

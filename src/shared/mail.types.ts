@@ -1,6 +1,6 @@
-export type ThemeMode = 'system' | 'light' | 'dark';
-export type Provider = 'gmail' | 'outlook' | 'icloud';
-export type SettingsTab = 'general' | 'accounts' | 'advanced';
+export type ThemeMode = "system" | "light" | "dark";
+export type Provider = "gmail" | "outlook" | "icloud";
+export type SettingsTab = "general" | "accounts" | "advanced";
 
 export type AuthSession = {
   email: string;
@@ -13,7 +13,7 @@ export type MailAccount = {
   provider: Provider;
   email: string;
   displayName: string;
-  syncStatus: 'idle' | 'syncing' | 'offline' | 'error' | 'unsupported';
+  syncStatus: "idle" | "syncing" | "offline" | "error" | "unsupported";
   lastSyncedAt: string | null;
 };
 
@@ -48,4 +48,32 @@ export type MessageDetail = MessageSummary & {
     mimeType: string;
     byteSize: number;
   }>;
+};
+
+export type NotificationSummary = {
+  id: string;
+  messageId: string;
+  accountId: string;
+  accountEmail: string;
+  sender: string;
+  subject: string;
+  preview: string;
+  kind: "access" | "security";
+  status: "valid" | "expired" | "security";
+  code: string | null;
+  receivedAt: string;
+  expiresAt: string | null;
+  reason: string;
+  isSeen: boolean;
+};
+
+export type NotificationList = {
+  items: NotificationSummary[];
+  unseenCount: number;
+  nextExpiryAt: string | null;
+  enabled: boolean;
+};
+
+export type NotificationSetting = {
+  enabled: boolean;
 };

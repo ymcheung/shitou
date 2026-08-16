@@ -68,11 +68,13 @@
     icloudPassword = $bindable(""),
     theme,
     accounts,
+    notificationsEnabled,
     appBusy = false,
     canAddAccounts = true,
     isDemoMode = false,
     accountColor,
     onChangeTheme,
+    onChangeNotificationsEnabled,
     onLogout,
     onConnectProvider,
     onConnectIcloud,
@@ -86,11 +88,13 @@
     icloudPassword: string;
     theme: ThemeMode;
     accounts: MailAccount[];
+    notificationsEnabled: boolean;
     appBusy: boolean;
     canAddAccounts: boolean;
     isDemoMode: boolean;
     accountColor: (accountId: string) => string;
     onChangeTheme: (theme: ThemeMode) => void | Promise<void>;
+    onChangeNotificationsEnabled: (enabled: boolean) => void | Promise<void>;
     onLogout: () => void | Promise<void>;
     onConnectProvider: (
       provider: Exclude<Provider, "icloud">,
@@ -228,6 +232,48 @@
                   </button>
                 {/each}
               </div>
+            </div>
+
+            <div
+              class="grid gap-3 border-t border-zinc-200 pt-5 sm:grid-cols-[11rem_1fr] sm:items-center dark:border-zinc-800"
+            >
+              <div>
+                <div
+                  class="text-sm font-semibold text-zinc-950 dark:text-white"
+                >
+                  Temporary mail
+                </div>
+                <p
+                  class="mt-1 text-pretty text-xs leading-5 text-zinc-500 dark:text-zinc-400"
+                >
+                  Keep short-lived security mail out of Inbox after it expires.
+                </p>
+              </div>
+              <label
+                class="flex min-h-12 cursor-pointer items-center justify-between gap-4 rounded-lg border border-zinc-200 bg-zinc-50/60 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-950/60"
+              >
+                <span>
+                  <span
+                    class="block text-sm font-medium text-zinc-800 dark:text-zinc-200"
+                  >
+                    Move temporary security mail to Notifications
+                  </span>
+                  <span
+                    class="mt-0.5 block text-pretty text-xs text-zinc-500 dark:text-zinc-400"
+                  >
+                    Runs locally and never changes the provider copy.
+                  </span>
+                </span>
+                <input
+                  class="size-5 shrink-0 cursor-pointer rounded border-zinc-300 text-violet-600 focus:ring-violet-500 dark:border-zinc-700 dark:bg-zinc-900"
+                  type="checkbox"
+                  checked={notificationsEnabled}
+                  onchange={(event) =>
+                    void onChangeNotificationsEnabled(
+                      event.currentTarget.checked,
+                    )}
+                />
+              </label>
             </div>
 
             <div
